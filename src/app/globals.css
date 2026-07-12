@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: radial-gradient(1200px 800px at 15% -10%, #1b1636 0%, transparent 55%),
+    radial-gradient(1000px 700px at 100% 0%, #10233a 0%, transparent 50%), #0a0a12;
+  color: #e6e6f0;
+  min-height: 100%;
+}
+
+::selection {
+  background: rgba(109, 94, 252, 0.4);
+}
+
+/* Thin, unobtrusive scrollbars for the bucket panes. */
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
