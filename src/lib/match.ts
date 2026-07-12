@@ -36,6 +36,15 @@ export const NO_MAIL: MatchOutcome = {
   confidence: "none",
 };
 
+export const SELF_HOSTED: MatchOutcome = {
+  providerId: "__self_hosted__",
+  provider: "Self-hosted (own mail server)",
+  category: "Self-hosted",
+  color: "#5c6b7a",
+  matchedBy: "mx",
+  confidence: "medium",
+};
+
 /** Return the first (host, pattern) pair where a host contains a pattern. */
 function firstMatch(
   haystacks: string[],
@@ -116,5 +125,14 @@ export function matchDomain(
     };
   }
 
-  return records.mx.length ? UNMATCHED_MX : NO_MAIL;
+  if (!records.mx.length) return NO_MAIL;
+
+  // Self-hosted: every MX host lives under the domain's own name (mail.acme.com
+  // for acme.com) — its own server, not a shared provider.
+  if (domain) {
+    const selfHosted = records.mx.every((h) => h === domain || h.endsWith("." + domain));
+    if (selfHosted) return { ...SELF_HOSTED, evidence: records.mx[0] };
+  }
+
+  return UNMATCHED_MX;
 }

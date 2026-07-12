@@ -19,7 +19,10 @@ const THIRTY_MIN_MS = 30 * 60 * 1000;
  */
 export default function AdsterraPopup() {
   useEffect(() => {
-    const src = process.env.NEXT_PUBLIC_ADSTERRA_POPUNDER_SRC;
+    // Public popunder script (env overrides). Fires at most once / 30 min.
+    const src =
+      process.env.NEXT_PUBLIC_ADSTERRA_POPUNDER_SRC ||
+      "https://pl30337621.effectivecpmnetwork.com/1d/75/0b/1d750be5576ba35c0d22ca3e1aa829dd.js";
     if (!src) return;
 
     const last = Number(localStorage.getItem(POPUP_TS_KEY) || 0);

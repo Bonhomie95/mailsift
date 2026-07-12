@@ -121,6 +121,10 @@ const REGISTRAR_RULES: RegistrarRule[] = [
   { id: "xincache", name: "Xincache / Chinese SMB", color: "#c0392b", patterns: ["xincache", "net-chinese", "35.com", "cn4e"] },
   { id: "pavietnam", name: "PA Vietnam", color: "#005baa", patterns: ["pavietnam", "pa vietnam"] },
   { id: "inet-vn", name: "iNET Vietnam", color: "#f37021", patterns: ["inet.vn", "inet corp"] },
+  { id: "whogohost", name: "WhoGoHost", color: "#00a651", patterns: ["whogohost"] },
+  { id: "web4africa", name: "Web4Africa", color: "#ff6600", patterns: ["web4africa"] },
+  { id: "pdrl-truehost", name: "Truehost / Sasahost", color: "#1eb53a", patterns: ["truehost", "sasahost"] },
+  { id: "onlydomains", name: "OnlyDomains / Freeparking", color: "#2e77bb", patterns: ["onlydomains", "freeparking"] },
 ];
 
 const PALETTE = ["#6d5efc", "#e2231a", "#0a7cff", "#e79f2c", "#12a150", "#c026d3", "#0891b2", "#db2777"];

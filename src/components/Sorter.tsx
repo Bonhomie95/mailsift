@@ -480,6 +480,21 @@ export default function Sorter() {
     downloadCsv(`mailsift-${b.id.replace(/[^a-z0-9]+/gi, "-")}.csv`, rows);
   }
 
+  // Clear saved results, history and the restored session — but NOT the quota
+  // window (mailsift-quota-*), so a user can't wipe cache to reset their limit.
+  function clearCache() {
+    localStorage.removeItem(RESUME_KEY);
+    localStorage.removeItem(HISTORY_KEY);
+    setResults([]);
+    setRegByDomain({});
+    setText("");
+    setFileName(null);
+    setHistory([]);
+    setActiveBucket(null);
+    setRestoredNote(null);
+    setError(null);
+  }
+
   function downloadText(filename: string, content: string) {
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -733,6 +748,16 @@ export default function Sorter() {
             </span>
             <span className={busy ? "text-brand-400" : ""}>{liveRemaining.toLocaleString()} left · 20k / 6h</span>
           </div>
+
+          {(results.length > 0 || history.length > 0 || text) && (
+            <button
+              onClick={clearCache}
+              className="mt-2 text-[11px] text-white/30 hover:text-white/60"
+              title="Clears your saved results and recent-sort history. Your 6-hour usage limit is NOT reset."
+            >
+              🧹 Clear saved history &amp; cache
+            </button>
+          )}
         </div>
 
         {/* Results summary */}
@@ -743,11 +768,15 @@ export default function Sorter() {
             </h2>
             {results.length > 0 && (
               <div className="flex items-center gap-3">
-                <button onClick={exportAll} className="text-xs text-brand-400 hover:text-brand-400/80">
-                  ⬇ CSV
+                <span className="text-[10px] uppercase text-white/30">Export</span>
+                <button onClick={exportEmailsAll} className="text-xs text-brand-400 hover:text-brand-400/80" title="Just the email addresses, one per line">
+                  Emails
                 </button>
-                <button onClick={exportXlsx} className="text-xs text-brand-400 hover:text-brand-400/80">
-                  ⬇ XLSX
+                <button onClick={exportAll} className="text-xs text-brand-400 hover:text-brand-400/80" title="Full table with provider, MX, NS, registrar…">
+                  CSV
+                </button>
+                <button onClick={exportXlsx} className="text-xs text-brand-400 hover:text-brand-400/80" title="Excel workbook: Summary + full Results">
+                  XLSX
                 </button>
               </div>
             )}
@@ -868,10 +897,13 @@ export default function Sorter() {
             </h3>
             <div className="flex items-center gap-3">
               <button onClick={() => copyBucketDomains(shown)} className="text-xs text-brand-400 hover:text-brand-400/80">
-                {copiedId === shown.id ? "✓ Copied" : "⧉ Copy domains"}
+                {copiedId === shown.id ? "✓ Copied" : "⧉ Copy emails"}
               </button>
-              <button onClick={() => exportBucket(shown)} className="text-xs text-brand-400 hover:text-brand-400/80">
-                ⬇ Export this bucket
+              <button onClick={() => exportBucketEmails(shown)} className="text-xs text-brand-400 hover:text-brand-400/80" title="Just the emails, one per line">
+                ⬇ Emails
+              </button>
+              <button onClick={() => exportBucket(shown)} className="text-xs text-brand-400 hover:text-brand-400/80" title="Full table for this bucket">
+                ⬇ CSV
               </button>
             </div>
           </div>

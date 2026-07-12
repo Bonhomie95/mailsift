@@ -2,6 +2,11 @@ import Sorter from "@/components/Sorter";
 import AdsterraBanner from "@/components/AdsterraBanner";
 import AdsterraPopup from "@/components/AdsterraPopup";
 
+// Adsterra ad-unit keys (public — they ship in client HTML on every Adsterra
+// site). Env vars override these if set.
+const BANNER_728 = process.env.NEXT_PUBLIC_ADSTERRA_BANNER1_KEY || "b0987eb7f856c1f57e2167916a7b28dd";
+const BANNER_300 = process.env.NEXT_PUBLIC_ADSTERRA_BANNER2_KEY || "703b5756d57b1d7a3802ab0555224184";
+
 export default function Home() {
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
@@ -40,24 +45,14 @@ export default function Home() {
 
       {/* Banner #1 — leaderboard above the tool */}
       <div className="mb-6 flex justify-center">
-        <AdsterraBanner
-          adKey={process.env.NEXT_PUBLIC_ADSTERRA_BANNER1_KEY}
-          width={728}
-          height={90}
-          label="Ad slot · leaderboard 728×90"
-        />
+        <AdsterraBanner adKey={BANNER_728} width={728} height={90} label="Ad slot · leaderboard 728×90" />
       </div>
 
       <Sorter />
 
       {/* Banner #2 — rectangle below the tool */}
       <div className="mt-8 flex justify-center">
-        <AdsterraBanner
-          adKey={process.env.NEXT_PUBLIC_ADSTERRA_BANNER2_KEY}
-          width={300}
-          height={250}
-          label="Ad slot · rectangle 300×250"
-        />
+        <AdsterraBanner adKey={BANNER_300} width={300} height={250} label="Ad slot · rectangle 300×250" />
       </div>
 
       <footer className="mt-16 border-t border-white/10 pt-6 text-center text-xs text-white/30">

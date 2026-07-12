@@ -487,4 +487,52 @@ export const SEED_PROVIDERS: ProviderRule[] = [
   { id: "spamexperts", name: "SpamExperts / N-able", category: "Security Gateway", matchOn: "mx", mxPatterns: ["mailspamprotection.com", "antispamcloud.com"], nsPatterns: [], priority: 6, color: "#1abc9c", icon: "🛡️" },
   { id: "securemx-jp", name: "SecureMX (JP)", category: "Security Gateway", matchOn: "mx", mxPatterns: ["securemx.jp"], nsPatterns: [], priority: 6, color: "#c0392b", icon: "🛡️" },
   { id: "mailchannels", name: "MailChannels", category: "Security Gateway", matchOn: "mx", mxPatterns: ["mailchannels.net"], nsPatterns: [], priority: 5, color: "#2c3e50", icon: "🛡️" },
+
+  // ===================== Batch 7: more countries (LatAm, Caucasus, small EU, Africa, CN deepen) =====================
+  // --- Latin America ---
+  { id: "antel-uy", name: "ANTEL / Adinet", category: "ANTEL (UY)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["adinet.com.uy", "antel.com.uy", "netgate.com.uy"], priority: 8, color: "#0038a8", icon: "🇺🇾" },
+  { id: "entel-bo", name: "Entel / Cotas (Bolivia)", category: "Bolivia (BO)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["entelnet.bo", "cotas.com.bo", "cotas.net.bo"], priority: 8, color: "#d52b1e", icon: "🇧🇴" },
+  { id: "cnt-ec", name: "CNT / Andinanet (Ecuador)", category: "Ecuador (EC)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["andinanet.net", "interactive.net.ec", "cnt.net.ec", "punto.net.ec"], priority: 8, color: "#ffdd00", icon: "🇪🇨" },
+  { id: "tigo-py", name: "Tigo / Highway (Paraguay)", category: "Paraguay (PY)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["highway.com.py", "tigo.com.py", "conexion.com.py"], priority: 8, color: "#0033a0", icon: "🇵🇾" },
+  // --- Caucasus / Central Asia ---
+  { id: "arminco-am", name: "Arminco / Netsys (Armenia)", category: "Armenia (AM)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["arminco.com", "netsys.am", "web.am"], priority: 8, color: "#d90012", icon: "🇦🇲" },
+  { id: "caucasus-ge", name: "Caucasus Online (Georgia)", category: "Georgia (GE)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["caucasus.net", "access.sanet.ge", "posta.ge"], priority: 8, color: "#e30613", icon: "🇬🇪" },
+  { id: "azeronline-az", name: "AzerOnline (Azerbaijan)", category: "Azerbaijan (AZ)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["azeronline.com", "azdata.net", "azeurotel.com"], priority: 8, color: "#3f9c35", icon: "🇦🇿" },
+  { id: "sarkor-uz", name: "Sarkor / Uzpak (Uzbekistan)", category: "Uzbekistan (UZ)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["sarkor.uz", "uzpak.uz", "mail.ru.uz"], priority: 8, color: "#1eb53a", icon: "🇺🇿" },
+  { id: "magicnet-mn", name: "Magicnet / Mongol (Mongolia)", category: "Mongolia (MN)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["magicnet.mn", "mongol.net", "mobinet.mn"], priority: 8, color: "#c4272e", icon: "🇲🇳" },
+  // --- Small Europe ---
+  { id: "simnet-is", name: "Síminn / Internet.is (Iceland)", category: "Iceland (IS)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["simnet.is", "internet.is", "vortex.is", "mmedia.is"], priority: 8, color: "#02529c", icon: "🇮🇸" },
+  { id: "cyta-cy", name: "CYTA (Cyprus)", category: "CYTA (CY)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["cytanet.com.cy", "spidernet.com.cy", "cablenet.com.cy"], priority: 8, color: "#d57800", icon: "🇨🇾" },
+  { id: "maltanet-mt", name: "Melita / Maltanet (Malta)", category: "Malta (MT)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["onvol.net", "maltanet.net", "waldonet.net.mt"], priority: 8, color: "#cf142b", icon: "🇲🇹" },
+  { id: "bihnet-ba", name: "BIH Net (Bosnia)", category: "Bosnia (BA)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["bih.net.ba", "blic.net"], priority: 8, color: "#002395", icon: "🇧🇦" },
+  // --- Africa ---
+  { id: "topnet-tn", name: "TopNet / Planet (Tunisia)", category: "Tunisia (TN)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["topnet.tn", "planet.tn", "gnet.tn", "hexabyte.tn"], priority: 8, color: "#e70013", icon: "🇹🇳" },
+  { id: "africaonline", name: "Africa Online", category: "Africa Online", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["africaonline.co.tz", "africaonline.co.ug", "africaonline.com.gh"], priority: 8, color: "#f9a01b", icon: "🌍" },
+  // --- China (deepen) ---
+  { id: "eyou", name: "eYou", category: "eYou (CN)", matchOn: "mx", mxPatterns: ["eyou.net", "eyou.com"], nsPatterns: [], domainPatterns: ["eyou.com"], priority: 7, color: "#c0392b", icon: "🇨🇳" },
+  { id: "aliyun-consumer", name: "Aliyun Mail (aliyun.com)", category: "Alibaba (CN)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["aliyun.com", "163.net"], priority: 7, color: "#ff6a00", icon: "🇨🇳" },
+
+  // ===================== Batch 8: small countries (Africa, Middle East, SE Asia, small EU, Pacific) =====================
+  // --- Africa ---
+  { id: "mtn-ng", name: "MTN / Linkserve (Nigeria)", category: "Nigeria (NG)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["mtnonline.com", "linkserve.com", "rcl.nig.com"], priority: 8, color: "#ffc72c", icon: "🇳🇬" },
+  { id: "ghana-gh", name: "Ghana.com / 4U", category: "Ghana (GH)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["ghana.com", "4u.com.gh"], priority: 8, color: "#006b3f", icon: "🇬🇭" },
+  { id: "zol-zw", name: "ZOL / Ecoweb (Zimbabwe)", category: "Zimbabwe (ZW)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["zol.co.zw", "ecoweb.co.zw", "mango.zw", "mweb.co.zw"], priority: 8, color: "#009739", icon: "🇿🇼" },
+  { id: "raha-tz", name: "Raha / SimbaNET (Tanzania)", category: "Tanzania (TZ)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["raha.com", "cats-net.com", "ud.co.tz"], priority: 8, color: "#1eb53a", icon: "🇹🇿" },
+  { id: "infocom-ug", name: "Infocom / UTL (Uganda)", category: "Uganda (UG)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["infocom.co.ug", "utlonline.co.ug", "imul.com"], priority: 8, color: "#fcdc04", icon: "🇺🇬" },
+  // --- Middle East ---
+  { id: "uruklink-iq", name: "Uruklink / EarthLink (Iraq)", category: "Iraq (IQ)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["uruklink.net", "earthlink.iq", "itnet.iq"], priority: 8, color: "#ce1126", icon: "🇮🇶" },
+  { id: "scsnet-sy", name: "SCS-Net (Syria)", category: "Syria (SY)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["scs-net.org", "net.sy", "mail.sy"], priority: 8, color: "#007a3d", icon: "🇸🇾" },
+  { id: "ynet-ye", name: "Y.Net / YemenNet (Yemen)", category: "Yemen (YE)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["y.net.ye", "yemen.net.ye"], priority: 8, color: "#ce1126", icon: "🇾🇪" },
+  // --- Southeast Asia ---
+  { id: "mpt-mm", name: "MPT / Myanmar", category: "Myanmar (MM)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["mptmail.net.mm", "myanmar.com.mm", "mpt.net.mm"], priority: 8, color: "#fecb00", icon: "🇲🇲" },
+  { id: "ezecom-kh", name: "Ezecom / Camnet (Cambodia)", category: "Cambodia (KH)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["ezecom.com.kh", "online.com.kh", "camnet.com.kh", "camintel.com"], priority: 8, color: "#032ea1", icon: "🇰🇭" },
+  { id: "laotel-la", name: "Laotel / ETL (Laos)", category: "Laos (LA)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["laotel.com", "etllao.com"], priority: 8, color: "#ce1126", icon: "🇱🇦" },
+  { id: "brunet-bn", name: "Brunet (Brunei)", category: "Brunei (BN)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["brunet.bn"], priority: 8, color: "#f7e017", icon: "🇧🇳" },
+  // --- Small Europe ---
+  { id: "moldtelecom-md", name: "Moldtelecom / Mail.md", category: "Moldova (MD)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["mail.md", "moldtelecom.md", "mdl.net"], priority: 8, color: "#0046ae", icon: "🇲🇩" },
+  { id: "thome-mk", name: "T-Home / Unet (N. Macedonia)", category: "N. Macedonia (MK)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["t-home.mk", "unet.com.mk", "on.net.mk"], priority: 8, color: "#d20000", icon: "🇲🇰" },
+  { id: "tcom-me", name: "T-Com / Crnogorski (Montenegro)", category: "Montenegro (ME)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["t-com.me", "cg.yu"], priority: 8, color: "#c40308", icon: "🇲🇪" },
+  { id: "abcom-al", name: "ABCom (Albania)", category: "Albania (AL)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["abcom.al", "albmail.com"], priority: 8, color: "#e41e20", icon: "🇦🇱" },
+  // --- Pacific ---
+  { id: "connect-fj", name: "Connect Fiji", category: "Fiji (FJ)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["connect.com.fj", "unwired.com.fj"], priority: 8, color: "#68bfe5", icon: "🇫🇯" },
 ];
