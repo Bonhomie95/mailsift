@@ -663,7 +663,7 @@ export default function Sorter() {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={"Paste domains or emails here...\n\njoseph@bonhomieinc.dev, acme.com; example.org\nfoo.io  bar.net"}
+              placeholder={"Paste domains or emails here...\n\nsales@hinet.net, acme.com; example.org\nfoo.io  bar.net"}
               className="h-56 w-full resize-none rounded-xl bg-transparent p-4 text-sm text-white/90 outline-none placeholder:text-white/25"
             />
           </div>

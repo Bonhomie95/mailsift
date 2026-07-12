@@ -32,7 +32,7 @@ export interface ProviderRule {
 }
 
 export interface DomainResult {
-  /** Normalized domain, e.g. "bonhomieinc.dev" */
+  /** Normalized domain, e.g. "hinet.net" */
   domain: string;
   /** Original inputs (emails/domains) that resolved to this domain. */
   inputs: string[];
