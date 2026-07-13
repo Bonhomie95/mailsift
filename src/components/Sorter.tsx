@@ -92,15 +92,31 @@ function formatCountdown(target: number): string {
   return "<1m";
 }
 
+function tableToCsv(rows: string[][]): string {
+  return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+}
+
 function downloadCsv(filename: string, rows: string[][]) {
-  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  downloadBlob(filename, new Blob([tableToCsv(rows)], { type: "text/csv;charset=utf-8" }));
+}
+
+function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// Filesystem-safe slug + timestamp for export filenames.
+function fileSlug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bucket";
+}
+function fileStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
 export default function Sorter() {
@@ -129,6 +145,8 @@ export default function Sorter() {
   const [showHistory, setShowHistory] = useState(false);
   const [exportCols, setExportCols] = useState<string[]>(DEFAULT_EXPORT_COLS);
   const [showExportCols, setShowExportCols] = useState(false);
+  const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(new Set());
+  const [zipping, setZipping] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestValue, setSuggestValue] = useState("");
   const [suggestNote, setSuggestNote] = useState("");
@@ -390,6 +408,7 @@ export default function Sorter() {
   function switchDimension(next: Dimension) {
     setDimension(next);
     setActiveBucket(null);
+    setSelectedBuckets(new Set());
     if (next === "registrar" && results.length) fetchRegistrars(results.map((r) => r.domain));
   }
 
@@ -415,6 +434,7 @@ export default function Sorter() {
     setResults([]);
     setRegByDomain({});
     setActiveBucket(null);
+    setSelectedBuckets(new Set());
     setProgress({ done: 0, total: domains.length });
 
     const collected: Result[] = [];
@@ -530,6 +550,59 @@ export default function Sorter() {
     downloadCsv(`mailsift-${b.id.replace(/[^a-z0-9]+/gi, "-")}.csv`, buildTable(source));
   }
 
+  // Build one file for a bucket, honoring the selected columns. When only the
+  // email column is picked, emit a plain .txt list; otherwise a .csv table.
+  function bucketFile(b: Bucket): { content: string; ext: string } {
+    const source = b.domains.map((d) => resultByDomain[d]).filter(Boolean);
+    if (exportCols.length === 1 && exportCols[0] === "input") {
+      return { content: source.flatMap((r) => originalsFor(r.domain)).join("\n"), ext: "txt" };
+    }
+    return { content: tableToCsv(buildTable(source)), ext: "csv" };
+  }
+
+  const bucketFilename = (b: Bucket, ext: string) => `mailsift_${fileSlug(b.label)}_${fileStamp()}.${ext}`;
+
+  // Download one bucket, or zip several. Used by the per-row icon, "download
+  // selected", and "download all".
+  async function downloadBuckets(list: Bucket[]) {
+    if (list.length === 0) return;
+    if (list.length === 1) {
+      const { content, ext } = bucketFile(list[0]);
+      downloadBlob(bucketFilename(list[0], ext), new Blob([content], { type: "text/plain;charset=utf-8" }));
+      return;
+    }
+    setZipping(true);
+    try {
+      const { createZip } = await import("@/lib/zip");
+      // De-dupe filenames inside the archive.
+      const seen = new Map<string, number>();
+      const files = list.map((b) => {
+        const { content, ext } = bucketFile(b);
+        let name = `${fileSlug(b.label)}.${ext}`;
+        const n = seen.get(name) ?? 0;
+        seen.set(name, n + 1);
+        if (n) name = `${fileSlug(b.label)}-${n}.${ext}`;
+        return { name, content };
+      });
+      downloadBlob(`mailsift_${dimension}s_${fileStamp()}.zip`, createZip(files));
+    } finally {
+      setZipping(false);
+    }
+  }
+
+  function toggleBucketSelect(id: string) {
+    setSelectedBuckets((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    const ids = visibleBuckets.map((b) => b.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedBuckets.has(id));
+    setSelectedBuckets(allSelected ? new Set() : new Set(ids));
+  }
+
   // Clear saved results, history and the restored session — but NOT the quota
   // window (mailsift-quota-*), so a user can't wipe cache to reset their limit.
   function clearCache() {
@@ -607,6 +680,9 @@ export default function Sorter() {
 
   // Would this list blow past the remaining 6-hour allowance? (checked up-front)
   const exceedsQuota = !busy && parsed.domains.length > quota.remaining;
+
+  const selectedVisibleCount = visibleBuckets.filter((b) => selectedBuckets.has(b.id)).length;
+  const allVisibleSelected = visibleBuckets.length > 0 && selectedVisibleCount === visibleBuckets.length;
 
   return (
     <div className="space-y-6">
@@ -704,6 +780,13 @@ export default function Sorter() {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                // Cmd/Ctrl+Enter to sort without reaching for the mouse.
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !busy && !exceedsQuota) {
+                  e.preventDefault();
+                  runSort();
+                }
+              }}
               placeholder={"Paste domains or emails here...\n\nsales@hinet.net, acme.com; example.org\nfoo.io  bar.net"}
               className="h-56 w-full resize-none rounded-xl bg-transparent p-4 text-sm text-white/90 outline-none placeholder:text-white/25"
             />
@@ -917,34 +1000,83 @@ export default function Sorter() {
                   className="mb-3 w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-1.5 text-xs text-white/80 outline-none placeholder:text-white/25 focus:border-brand-400"
                 />
               )}
+              {/* Select-all + bulk download bar */}
+              {visibleBuckets.length > 0 && (
+                <div className="mb-2 flex items-center gap-2 text-xs text-white/50">
+                  <label className="flex cursor-pointer items-center gap-1.5" title="Select every bucket">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = selectedVisibleCount > 0 && !allVisibleSelected;
+                      }}
+                      onChange={toggleSelectAll}
+                      className="h-3.5 w-3.5 accent-brand-500"
+                    />
+                    Select all
+                  </label>
+                  <button
+                    onClick={() => downloadBuckets(visibleBuckets.filter((b) => selectedBuckets.has(b.id)))}
+                    disabled={selectedVisibleCount === 0 || zipping}
+                    className="ml-auto rounded-md bg-brand-500/90 px-2.5 py-1 font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30"
+                  >
+                    {zipping
+                      ? "Zipping…"
+                      : `⬇ Download ${selectedVisibleCount || ""} selected${selectedVisibleCount > 1 ? " (.zip)" : ""}`}
+                  </button>
+                </div>
+              )}
+
               <div className="scroll-slim max-h-[400px] space-y-2 overflow-y-auto pr-1">
                 {visibleBuckets.length === 0 && (
                   <p className="py-4 text-center text-xs text-white/30">No {dimLabel.toLowerCase()} match “{bucketFilter}”.</p>
                 )}
                 {visibleBuckets.map((b) => {
                   const pct = sortedCount ? Math.round((b.domains.length / sortedCount) * 100) : 0;
+                  const isSel = selectedBuckets.has(b.id);
                   return (
-                    <button
+                    <div
                       key={b.id}
-                      onClick={() => setActiveBucket(activeBucket === b.id ? null : b.id)}
-                      className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                      className={`rounded-xl border px-3 py-2.5 transition ${
                         activeBucket === b.id
                           ? "border-brand-400/60 bg-brand-500/10"
+                          : isSel
+                          ? "border-brand-400/30 bg-brand-500/[0.06]"
                           : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
-                        <span className="truncate text-sm font-medium text-white/90">{b.label}</span>
-                        <span className="ml-auto text-sm font-semibold text-white/90">
-                          {b.domains.length.toLocaleString()}
-                        </span>
-                        <span className="w-10 text-right text-xs text-white/40">{pct}%</span>
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={() => toggleBucketSelect(b.id)}
+                          className="h-3.5 w-3.5 shrink-0 accent-brand-500"
+                          title="Select for multi-download"
+                        />
+                        <button
+                          onClick={() => setActiveBucket(activeBucket === b.id ? null : b.id)}
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        >
+                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
+                          <span className="truncate text-sm font-medium text-white/90">{b.label}</span>
+                          <span className="ml-auto text-sm font-semibold text-white/90">
+                            {b.domains.length.toLocaleString()}
+                          </span>
+                          <span className="w-10 text-right text-xs text-white/40">{pct}%</span>
+                        </button>
+                        <button
+                          onClick={() => downloadBuckets([b])}
+                          title={`Download ${b.label}`}
+                          aria-label={`Download ${b.label}`}
+                          className="shrink-0 rounded p-1 text-white/40 hover:bg-white/10 hover:text-brand-400"
+                        >
+                          ⬇
+                        </button>
                       </div>
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                         <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: b.color }} />
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
