@@ -55,6 +55,22 @@ const REG_CHUNK = 250;
 const HISTORY_KEY = "mailsift-history";
 const HISTORY_MAX = 8;
 
+// Columns the user can include when exporting a full table (CSV/XLSX).
+const EXPORT_COLUMNS: { key: string; label: string }[] = [
+  { key: "input", label: "Email / input" },
+  { key: "domain", label: "Domain" },
+  { key: "provider", label: "Mail provider" },
+  { key: "confidence", label: "Confidence" },
+  { key: "matched_by", label: "Matched by" },
+  { key: "matched_pattern", label: "Matched pattern" },
+  { key: "spf", label: "SPF" },
+  { key: "dmarc", label: "DMARC" },
+  { key: "mx", label: "MX records" },
+  { key: "ns", label: "NS records" },
+  { key: "registrar", label: "Registrar" },
+];
+const DEFAULT_EXPORT_COLS = ["input", "domain", "provider", "mx", "ns", "registrar"];
+
 async function readFileToText(file: File): Promise<string> {
   const name = file.name.toLowerCase();
   const isSheet = /\.(xlsx|xls|xlsm|ods)$/.test(name);
@@ -111,6 +127,37 @@ export default function Sorter() {
   const [deliverability, setDeliverability] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [exportCols, setExportCols] = useState<string[]>(DEFAULT_EXPORT_COLS);
+  const [showExportCols, setShowExportCols] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestValue, setSuggestValue] = useState("");
+  const [suggestNote, setSuggestNote] = useState("");
+  const [suggestMsg, setSuggestMsg] = useState<string | null>(null);
+  const [suggestSending, setSuggestSending] = useState(false);
+
+  async function submitSuggestion() {
+    if (!suggestValue.trim()) return;
+    setSuggestSending(true);
+    setSuggestMsg(null);
+    try {
+      const res = await fetch("/api/suggest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value: suggestValue, note: suggestNote }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setSuggestMsg(j.error || "Couldn't submit — try again.");
+      else {
+        setSuggestMsg("Thanks! We'll review it and add it soon.");
+        setSuggestValue("");
+        setSuggestNote("");
+      }
+    } catch {
+      setSuggestMsg("Couldn't submit — try again.");
+    } finally {
+      setSuggestSending(false);
+    }
+  }
 
   // Restore the previous sort on load so a refresh doesn't lose a big run.
   useEffect(() => {
@@ -435,30 +482,40 @@ export default function Sorter() {
     }
   }
 
-  function exportAll() {
-    const rows: string[][] = [
-      ["input", "domain", "mail_provider", "confidence", "matched_by", "matched_pattern", "spf", "dmarc", "mx", "ns", "registrar"],
-    ];
-    for (const r of results) {
-      const reg = regByDomain[r.domain];
-      // One row per original input (full email, never truncated).
+  // Value for one export column, for a given result + original input line.
+  function cellValue(key: string, r: Result, input: string): string {
+    const reg = regByDomain[r.domain];
+    switch (key) {
+      case "input": return input;
+      case "domain": return r.domain;
+      case "provider": return r.provider;
+      case "confidence": return r.confidence ?? "";
+      case "matched_by": return r.matchedBy;
+      case "matched_pattern": return r.matchedPattern ?? "";
+      case "spf": return r.hasSpf === undefined ? "" : r.hasSpf ? "yes" : "no";
+      case "dmarc": return r.hasDmarc === undefined ? "" : r.hasDmarc ? "yes" : "no";
+      case "mx": return r.mx.join(" | ");
+      case "ns": return r.ns.join(" | ");
+      case "registrar": return reg?.registrar ?? "";
+      default: return "";
+    }
+  }
+
+  // Build a table (header + rows) from the currently-selected columns.
+  function buildTable(source: Result[]): string[][] {
+    const selected = exportCols.length ? exportCols : ["input"];
+    const cols = EXPORT_COLUMNS.filter((c) => selected.includes(c.key)).map((c) => c.key);
+    const rows: string[][] = [cols];
+    for (const r of source) {
       for (const input of originalsFor(r.domain)) {
-        rows.push([
-          input,
-          r.domain,
-          r.provider,
-          r.confidence ?? "",
-          r.matchedBy,
-          r.matchedPattern ?? "",
-          r.hasSpf === undefined ? "" : r.hasSpf ? "yes" : "no",
-          r.hasDmarc === undefined ? "" : r.hasDmarc ? "yes" : "no",
-          r.mx.join(" | "),
-          r.ns.join(" | "),
-          reg?.registrar ?? "",
-        ]);
+        rows.push(cols.map((c) => cellValue(c, r, input)));
       }
     }
-    downloadCsv("mailsift-all.csv", rows);
+    return rows;
+  }
+
+  function exportAll() {
+    downloadCsv("mailsift-all.csv", buildTable(results));
   }
 
   // Expand a domain back to the exact emails/domains the user entered for it
@@ -469,15 +526,8 @@ export default function Sorter() {
   }
 
   function exportBucket(b: Bucket) {
-    const rows: string[][] = [["input", "domain", "mail_provider", "registrar", "mx", "ns"]];
-    for (const domain of b.domains) {
-      const r = resultByDomain[domain];
-      const reg = regByDomain[domain];
-      for (const input of originalsFor(domain)) {
-        rows.push([input, domain, r?.provider ?? "", reg?.registrar ?? "", r?.mx.join(" | ") ?? "", r?.ns.join(" | ") ?? ""]);
-      }
-    }
-    downloadCsv(`mailsift-${b.id.replace(/[^a-z0-9]+/gi, "-")}.csv`, rows);
+    const source = b.domains.map((d) => resultByDomain[d]).filter(Boolean);
+    downloadCsv(`mailsift-${b.id.replace(/[^a-z0-9]+/gi, "-")}.csv`, buildTable(source));
   }
 
   // Clear saved results, history and the restored session — but NOT the quota
@@ -531,19 +581,7 @@ export default function Sorter() {
       summary.push([b.label, String(b.domains.length), String(sortedCount ? Math.round((b.domains.length / sortedCount) * 100) : 0)]);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "Summary");
 
-    const rows = [["input", "domain", "mail_provider", "confidence", "matched_by", "matched_pattern", "spf", "dmarc", "mx", "ns", "registrar"]];
-    for (const r of results) {
-      const reg = regByDomain[r.domain];
-      for (const input of originalsFor(r.domain)) {
-        rows.push([
-          input, r.domain, r.provider, r.confidence ?? "", r.matchedBy, r.matchedPattern ?? "",
-          r.hasSpf === undefined ? "" : r.hasSpf ? "yes" : "no",
-          r.hasDmarc === undefined ? "" : r.hasDmarc ? "yes" : "no",
-          r.mx.join(" | "), r.ns.join(" | "), reg?.registrar ?? "",
-        ]);
-      }
-    }
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Results");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildTable(results)), "Results");
     XLSX.writeFile(wb, "mailsift-report.xlsx");
   }
 
@@ -566,6 +604,9 @@ export default function Sorter() {
   const liveDone = busy && progress ? progress.done : 0;
   const liveUsed = Math.min(quota.limit, quota.used + liveDone);
   const liveRemaining = Math.max(0, quota.remaining - liveDone);
+
+  // Would this list blow past the remaining 6-hour allowance? (checked up-front)
+  const exceedsQuota = !busy && parsed.domains.length > quota.remaining;
 
   return (
     <div className="space-y-6">
@@ -721,15 +762,26 @@ export default function Sorter() {
             Also check <strong className="text-white/80">SPF &amp; DMARC</strong> deliverability (a little slower)
           </label>
 
+          {exceedsQuota && (
+            <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200">
+              ⚠️ That&rsquo;s {parsed.domains.length.toLocaleString()} domains, but you only have{" "}
+              <strong>{quota.remaining.toLocaleString()}</strong> left in this 6-hour window
+              {quota.resetAt && <> (resets in {formatCountdown(quota.resetAt)})</>}. Remove some, or
+              wait for the window to reset.
+            </div>
+          )}
+
           <button
             onClick={runSort}
-            disabled={busy || blocked || parsed.domains.length === 0}
+            disabled={busy || blocked || parsed.domains.length === 0 || exceedsQuota}
             className="mt-4 w-full rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-3 font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-400 hover:to-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy
               ? progress
                 ? `Sorting… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`
                 : "Sorting…"
+              : exceedsQuota
+              ? `Too many — ${(parsed.domains.length - quota.remaining).toLocaleString()} over your limit`
               : `Sort ${parsed.domains.length.toLocaleString()} domain${parsed.domains.length === 1 ? "" : "s"}`}
           </button>
 
@@ -772,15 +824,53 @@ export default function Sorter() {
                 <button onClick={exportEmailsAll} className="text-xs text-brand-400 hover:text-brand-400/80" title="Just the email addresses, one per line">
                   Emails
                 </button>
-                <button onClick={exportAll} className="text-xs text-brand-400 hover:text-brand-400/80" title="Full table with provider, MX, NS, registrar…">
+                <button onClick={exportAll} className="text-xs text-brand-400 hover:text-brand-400/80" title="CSV table with the columns you pick below">
                   CSV
                 </button>
-                <button onClick={exportXlsx} className="text-xs text-brand-400 hover:text-brand-400/80" title="Excel workbook: Summary + full Results">
+                <button onClick={exportXlsx} className="text-xs text-brand-400 hover:text-brand-400/80" title="Excel workbook: Summary + Results (selected columns)">
                   XLSX
+                </button>
+                <button
+                  onClick={() => setShowExportCols((s) => !s)}
+                  className={`text-xs ${showExportCols ? "text-white/80" : "text-white/40"} hover:text-white/80`}
+                  title="Choose which columns the CSV/XLSX include"
+                >
+                  Columns ▾
                 </button>
               </div>
             )}
           </div>
+
+          {/* Export column picker */}
+          {results.length > 0 && showExportCols && (
+            <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] uppercase text-white/40">Columns for CSV / XLSX</span>
+                <div className="flex gap-2 text-[11px]">
+                  <button onClick={() => setExportCols(EXPORT_COLUMNS.map((c) => c.key))} className="text-brand-400 hover:text-brand-400/80">All</button>
+                  <button onClick={() => setExportCols(["input"])} className="text-brand-400 hover:text-brand-400/80">Email only</button>
+                  <button onClick={() => setExportCols(DEFAULT_EXPORT_COLS)} className="text-white/40 hover:text-white/70">Reset</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {EXPORT_COLUMNS.map((c) => (
+                  <label key={c.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={exportCols.includes(c.key)}
+                      onChange={(e) =>
+                        setExportCols((prev) =>
+                          e.target.checked ? [...prev, c.key] : prev.filter((k) => k !== c.key)
+                        )
+                      }
+                      className="h-3.5 w-3.5 accent-brand-500"
+                    />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Dimension toggle */}
           <div className="mb-4 inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
@@ -970,6 +1060,48 @@ export default function Sorter() {
           </div>
         </div>
       )}
+
+      {/* Suggest a missing mail host */}
+      <div className="rounded-2xl border border-white/10 bg-ink-800/40 p-5 backdrop-blur">
+        <button
+          onClick={() => setSuggestOpen((s) => !s)}
+          className="flex w-full items-center justify-between text-left text-sm font-medium text-white/70 hover:text-white/90"
+        >
+          <span>💡 Missing a provider? Suggest a mail host (MX / NS) to add</span>
+          <span className="text-white/40">{suggestOpen ? "▾" : "▸"}</span>
+        </button>
+        {suggestOpen && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-white/40">
+              Tell us a domain, MX host, or NS host we should recognize (e.g.{" "}
+              <code className="rounded bg-white/10 px-1">acme-mail.com</code> or{" "}
+              <code className="rounded bg-white/10 px-1">mx1.somehost.net</code>). We&rsquo;ll review and add it.
+            </p>
+            <input
+              value={suggestValue}
+              onChange={(e) => setSuggestValue(e.target.value)}
+              placeholder="Domain, MX host, or NS host"
+              className="w-full rounded-lg border border-white/15 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-brand-400"
+            />
+            <textarea
+              value={suggestNote}
+              onChange={(e) => setSuggestNote(e.target.value)}
+              placeholder="Optional: which provider is it? Any details that help."
+              className="h-16 w-full resize-none rounded-lg border border-white/15 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-brand-400"
+            />
+            <div className="flex items-center gap-3">
+              <button
+                onClick={submitSuggestion}
+                disabled={suggestSending || !suggestValue.trim()}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-400 disabled:opacity-40"
+              >
+                {suggestSending ? "Sending…" : "Submit suggestion"}
+              </button>
+              {suggestMsg && <span className="text-xs text-white/60">{suggestMsg}</span>}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

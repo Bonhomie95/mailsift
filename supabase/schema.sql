@@ -37,8 +37,19 @@ create table if not exists public.api_keys (
   last_used timestamptz
 );
 
+-- User-submitted "add this mail host" suggestions (from the public form).
+create table if not exists public.suggestions (
+  id uuid primary key default gen_random_uuid(),
+  value text not null,
+  note text,
+  email text,
+  handled boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 -- The app talks to these tables with the service-role key (server-side only),
 -- so Row Level Security can stay enabled with no public policies.
 alter table public.providers enable row level security;
 alter table public.dns_cache enable row level security;
 alter table public.api_keys enable row level security;
+alter table public.suggestions enable row level security;

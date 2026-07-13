@@ -24,9 +24,6 @@ export default function Home() {
           <span className="hidden rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300 sm:inline">
             Free · 20k / 6 hours
           </span>
-          <a href="/admin" className="text-white/50 hover:text-white/80">
-            Admin
-          </a>
         </div>
       </header>
 

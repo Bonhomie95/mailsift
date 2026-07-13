@@ -351,7 +351,7 @@ export const SEED_PROVIDERS: ProviderRule[] = [
   { id: "fibertel-ar", name: "Fibertel / Arnet", category: "Fibertel (AR)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["fibertel.com.ar", "arnet.com.ar", "speedy.com.ar"], priority: 8, color: "#e30613", icon: "🇦🇷" },
   { id: "claro-latam", name: "Claro", category: "Claro (LATAM)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["claro.com.br", "claro.com.co", "claro.com.ar", "claro.cl"], priority: 8, color: "#da291c", icon: "🌎" },
   // --- Oceania ---
-  { id: "bigpond", name: "BigPond / Telstra", category: "Telstra (AU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["bigpond.com", "bigpond.net.au", "telstra.com"], priority: 8, color: "#0d54ff", icon: "🇦🇺" },
+  { id: "bigpond", name: "BigPond / Telstra", category: "Telstra (AU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["bigpond.com", "bigpond.net.au", "bigpond.com.au", "telstra.com"], priority: 8, color: "#0d54ff", icon: "🇦🇺" },
   { id: "optus", name: "Optus", category: "Optus (AU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["optusnet.com.au", "optus.com.au"], priority: 8, color: "#00b8d4", icon: "🇦🇺" },
   { id: "iinet", name: "iiNet / Westnet", category: "iiNet (AU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["iinet.net.au", "westnet.com.au", "internode.on.net", "ozemail.com.au"], priority: 8, color: "#f57f29", icon: "🇦🇺" },
   { id: "tpg", name: "TPG / Dodo", category: "TPG (AU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["tpg.com.au", "dodo.com.au", "exemail.com.au"], priority: 8, color: "#e4002b", icon: "🇦🇺" },
@@ -361,7 +361,7 @@ export const SEED_PROVIDERS: ProviderRule[] = [
   { id: "bezeq", name: "Bezeq", category: "Bezeq (IL)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["bezeqint.net", "013net.net"], priority: 8, color: "#0a3d91", icon: "🇮🇱" },
   { id: "mweb", name: "MWEB", category: "MWEB (ZA)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["mweb.co.za"], priority: 8, color: "#e4002b", icon: "🇿🇦" },
   { id: "telkomsa", name: "Telkom SA / Webmail.co.za", category: "Telkom (ZA)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["telkomsa.net", "webmail.co.za", "vodamail.co.za", "absamail.co.za"], priority: 8, color: "#00a9ce", icon: "🇿🇦" },
-  { id: "etisalat", name: "Etisalat", category: "Etisalat (AE)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["etisalat.ae", "emirates.net.ae"], priority: 8, color: "#8dc63f", icon: "🇦🇪" },
+  { id: "etisalat", name: "Etisalat / EIM", category: "Etisalat (AE)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["etisalat.ae", "emirates.net.ae", "eim.ae"], priority: 8, color: "#8dc63f", icon: "🇦🇪" },
 
   // ===================== Batch 4: more countries (top local ISP / webmail) =====================
   // --- Japan (ISPs) ---
@@ -418,7 +418,7 @@ export const SEED_PROVIDERS: ProviderRule[] = [
   { id: "alice-de", name: "Alice / O2 DE", category: "O2 (DE)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["alice-dsl.de", "alice.de", "o2online.de"], priority: 8, color: "#0050a0", icon: "🇩🇪" },
   { id: "comhem-se", name: "Comhem / Tele2", category: "Tele2 (SE)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["comhem.se", "bredband.net", "tele2.se"], priority: 8, color: "#00b5e2", icon: "🇸🇪" },
   // --- Spain (extra) ---
-  { id: "ono-es", name: "ONO / Vodafone ES", category: "Vodafone (ES)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["ono.com", "wanadoo.es"], priority: 8, color: "#e60000", icon: "🇪🇸" },
+  { id: "ono-es", name: "ONO / Vodafone ES", category: "Vodafone (ES)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["ono.com", "wanadoo.es", "vodafone.es"], priority: 8, color: "#e60000", icon: "🇪🇸" },
   // --- Brazil (extra) ---
   { id: "globo-br", name: "Globo / R7", category: "Globo (BR)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["globo.com", "globomail.com", "r7.com"], priority: 8, color: "#0a6b3b", icon: "🇧🇷" },
   { id: "oi-br", name: "Oi", category: "Oi (BR)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["oi.com.br", "veloxmail.com.br"], priority: 8, color: "#5a2d81", icon: "🇧🇷" },
@@ -535,4 +535,35 @@ export const SEED_PROVIDERS: ProviderRule[] = [
   { id: "abcom-al", name: "ABCom (Albania)", category: "Albania (AL)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["abcom.al", "albmail.com"], priority: 8, color: "#e41e20", icon: "🇦🇱" },
   // --- Pacific ---
   { id: "connect-fj", name: "Connect Fiji", category: "Fiji (FJ)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["connect.com.fj", "unwired.com.fj"], priority: 8, color: "#68bfe5", icon: "🇫🇯" },
+
+  // ===================== Batch 9: webmail/ISP mined from real unknown/self-hosted lists =====================
+  { id: "netvigator", name: "Netvigator (PCCW)", category: "PCCW (HK)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["netvigator.com", "biznetvigator.com"], priority: 8, color: "#e2231a", icon: "🇭🇰" },
+  { id: "hkstar", name: "HK Star", category: "HKStar (HK)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["hkstar.com"], priority: 8, color: "#c8102e", icon: "🇭🇰" },
+  { id: "hknet", name: "HKNet", category: "HKNet (HK)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["hknet.com"], priority: 8, color: "#0a68b1", icon: "🇭🇰" },
+  { id: "hkbn", name: "HKBN", category: "HKBN (HK)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["hkbn.net", "hkbnes.net"], priority: 8, color: "#f7941e", icon: "🇭🇰" },
+  { id: "hongkong-com", name: "Hongkong.com", category: "Hongkong.com (HK)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["hongkong.com"], priority: 8, color: "#d4202a", icon: "🇭🇰" },
+  { id: "ctm-mo", name: "CTM (Macau)", category: "CTM (MO)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["macau.ctm.net", "ctm.net"], priority: 8, color: "#007a3d", icon: "🇲🇴" },
+  { id: "usa-net", name: "USA.NET", category: "USA.NET (US)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["usa.net"], priority: 8, color: "#3c3b6e", icon: "🇺🇸" },
+  { id: "execulink-ca", name: "Execulink", category: "Execulink (CA)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["execulink.com"], priority: 8, color: "#d52b1e", icon: "🇨🇦" },
+  { id: "korea-com", name: "Korea.com", category: "Korea.com (KR)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["korea.com"], priority: 8, color: "#003478", icon: "🇰🇷" },
+  { id: "korea-kr", name: "Korea.kr (Gov)", category: "Korea Gov (KR)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["korea.kr"], priority: 8, color: "#0047a0", icon: "🇰🇷" },
+  { id: "mailnet-tw", name: "mail.net.tw", category: "mail.net.tw (TW)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["mail.net.tw"], priority: 8, color: "#0072bc", icon: "🇹🇼" },
+  { id: "sonet-tw", name: "So-net Taiwan", category: "So-net (TW)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["so-net.net.tw"], priority: 8, color: "#e60012", icon: "🇹🇼" },
+  { id: "bol-in", name: "BOL India", category: "BOL (IN)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["bol.net.in"], priority: 8, color: "#ff9933", icon: "🇮🇳" },
+  { id: "iprimus-au", name: "iPrimus", category: "iPrimus (AU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["iprimus.com.au"], priority: 8, color: "#ec1c24", icon: "🇦🇺" },
+  { id: "iafrica", name: "iAfrica", category: "iAfrica (ZA)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["iafrica.com"], priority: 8, color: "#007749", icon: "🇿🇦" },
+  { id: "intnet-mu", name: "Intnet (Mauritius Telecom)", category: "Mauritius (MU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["intnet.mu"], priority: 8, color: "#ea2839", icon: "🇲🇺" },
+  { id: "wxs-nl", name: "WXS / KPN", category: "WXS (NL)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["wxs.nl"], priority: 8, color: "#008fd3", icon: "🇳🇱" },
+  { id: "netvisao-pt", name: "Netvisão / NOS", category: "NOS (PT)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["netvisao.pt", "clix.pt"], priority: 8, color: "#00a3e0", icon: "🇵🇹" },
+  { id: "fastweb-it", name: "Fastweb", category: "Fastweb (IT)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["fastwebnet.it", "fastweb.it"], priority: 8, color: "#e2001a", icon: "🇮🇹" },
+  { id: "infonegocio-es", name: "Infonegocio (Telefónica)", category: "Telefónica (ES)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["infonegocio.com"], priority: 8, color: "#0066cc", icon: "🇪🇸" },
+  { id: "aaanet-ru", name: "AAAnet", category: "AAAnet (RU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["aaanet.ru"], priority: 8, color: "#0039a6", icon: "🇷🇺" },
+  { id: "pisem-ru", name: "Pisem.net (Mail.ru)", category: "Mail.ru (RU)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["pisem.net", "nm.ru", "front.ru"], priority: 8, color: "#168de2", icon: "🇷🇺" },
+  { id: "tenet-ua", name: "Te.net.ua", category: "Tenet (UA)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["te.net.ua"], priority: 8, color: "#005bbb", icon: "🇺🇦" },
+  { id: "internet-gr", name: "Internet.gr", category: "Internet.gr (GR)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["internet.gr"], priority: 8, color: "#0d5eaf", icon: "🇬🇷" },
+  { id: "maildk", name: "Mail.dk (Stofa)", category: "Mail.dk (DK)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["mail.dk"], priority: 8, color: "#c60c30", icon: "🇩🇰" },
+  { id: "montevideo-uy", name: "Montevideo.com.uy", category: "Montevideo (UY)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["montevideo.com.uy"], priority: 8, color: "#0038a8", icon: "🇺🇾" },
+  { id: "chongmail-cn", name: "Chong-mail", category: "Chong-mail (CN)", matchOn: "mx", mxPatterns: ["chong-mail.net"], nsPatterns: [], domainPatterns: ["chong-mail.net"], priority: 7, color: "#c0392b", icon: "🇨🇳" },
+  { id: "37-com", name: "37.com", category: "37.com (CN)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["37.com"], priority: 7, color: "#e67e22", icon: "🇨🇳" },
+  { id: "hkedcity", name: "HKEdCity", category: "HKEdCity (HK)", matchOn: "mx", mxPatterns: [], nsPatterns: [], domainPatterns: ["hkedcity.net"], priority: 8, color: "#00539f", icon: "🇭🇰" },
 ];
