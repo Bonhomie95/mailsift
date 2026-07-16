@@ -48,7 +48,7 @@ export default function AdsterraBanner({
   if (!adKey) {
     return (
       <div
-        className={`mx-auto flex items-center justify-center rounded-lg border border-dashed border-white/15 bg-white/[0.02] text-xs text-white/30 ${className}`}
+        className={`mx-auto flex items-center justify-center rounded-lg border border-dashed border-fg/15 bg-fg/[0.02] text-xs text-fg/30 ${className}`}
         style={{ width, height, maxWidth: "100%" }}
       >
         {label ?? `Ad slot · ${width}×${height}`}

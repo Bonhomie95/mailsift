@@ -147,6 +147,9 @@ export default function Sorter() {
   const [showExportCols, setShowExportCols] = useState(false);
   const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(new Set());
   const [zipping, setZipping] = useState(false);
+  const [dlFormat, setDlFormat] = useState<"csv" | "txt" | "xlsx">("csv");
+  const [sortSummary, setSortSummary] = useState<{ count: number; ms: number } | null>(null);
+  const drilldownRef = useRef<HTMLDivElement>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestValue, setSuggestValue] = useState("");
   const [suggestNote, setSuggestNote] = useState("");
@@ -435,7 +438,9 @@ export default function Sorter() {
     setRegByDomain({});
     setActiveBucket(null);
     setSelectedBuckets(new Set());
+    setSortSummary(null);
     setProgress({ done: 0, total: domains.length });
+    const startedAt = performance.now();
 
     const collected: Result[] = [];
     // Repaint at most ~every 70ms so results appear one-by-one as they stream
@@ -491,6 +496,7 @@ export default function Sorter() {
       }
       quota.add(domains.length);
       setRestoredNote(null);
+      setSortSummary({ count: collected.length, ms: performance.now() - startedAt });
       persistSort(collected, regByDomain, dimension, text);
       pushHistory(collected, text);
       if (dimension === "registrar") fetchRegistrars(collected.map((r) => r.domain));
@@ -550,44 +556,94 @@ export default function Sorter() {
     downloadCsv(`mailsift-${b.id.replace(/[^a-z0-9]+/gi, "-")}.csv`, buildTable(source));
   }
 
-  // Build one file for a bucket, honoring the selected columns. When only the
-  // email column is picked, emit a plain .txt list; otherwise a .csv table.
-  function bucketFile(b: Bucket): { content: string; ext: string } {
+  // Build one file for a bucket in the chosen download format.
+  //  txt  → just the emails, one per line
+  //  csv  → table using the columns picked above
+  //  xlsx → single-sheet workbook of the same table
+  async function bucketFile(b: Bucket): Promise<{ content: string | Uint8Array; ext: string }> {
     const source = b.domains.map((d) => resultByDomain[d]).filter(Boolean);
-    if (exportCols.length === 1 && exportCols[0] === "input") {
+    if (dlFormat === "txt") {
       return { content: source.flatMap((r) => originalsFor(r.domain)).join("\n"), ext: "txt" };
+    }
+    if (dlFormat === "xlsx") {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildTable(source)), "Results");
+      const out = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+      return { content: new Uint8Array(out), ext: "xlsx" };
     }
     return { content: tableToCsv(buildTable(source)), ext: "csv" };
   }
 
   const bucketFilename = (b: Bucket, ext: string) => `mailsift_${fileSlug(b.label)}_${fileStamp()}.${ext}`;
 
-  // Download one bucket, or zip several. Used by the per-row icon, "download
-  // selected", and "download all".
+  // Download one bucket, or zip several. Used by the per-row icon and
+  // "download selected".
   async function downloadBuckets(list: Bucket[]) {
     if (list.length === 0) return;
-    if (list.length === 1) {
-      const { content, ext } = bucketFile(list[0]);
-      downloadBlob(bucketFilename(list[0], ext), new Blob([content], { type: "text/plain;charset=utf-8" }));
-      return;
-    }
     setZipping(true);
     try {
+      if (list.length === 1) {
+        const { content, ext } = await bucketFile(list[0]);
+        const blob =
+          typeof content === "string"
+            ? new Blob([content], { type: ext === "csv" ? "text/csv;charset=utf-8" : "text/plain;charset=utf-8" })
+            : new Blob([content as BlobPart], { type: "application/octet-stream" });
+        downloadBlob(bucketFilename(list[0], ext), blob);
+        return;
+      }
       const { createZip } = await import("@/lib/zip");
       // De-dupe filenames inside the archive.
       const seen = new Map<string, number>();
-      const files = list.map((b) => {
-        const { content, ext } = bucketFile(b);
+      const files = [];
+      for (const b of list) {
+        const { content, ext } = await bucketFile(b);
         let name = `${fileSlug(b.label)}.${ext}`;
         const n = seen.get(name) ?? 0;
         seen.set(name, n + 1);
         if (n) name = `${fileSlug(b.label)}-${n}.${ext}`;
-        return { name, content };
-      });
+        files.push({ name, content });
+      }
       downloadBlob(`mailsift_${dimension}s_${fileStamp()}.zip`, createZip(files));
     } finally {
       setZipping(false);
     }
+  }
+
+  // Bring the drill-down table into view when a bucket is opened.
+  useEffect(() => {
+    if (!activeBucket) return;
+    const t = setTimeout(
+      () => drilldownRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+      60
+    );
+    return () => clearTimeout(t);
+  }, [activeBucket]);
+
+  // Quick-jump chips for the buckets people look for first.
+  const jumpTargets = useMemo(
+    () =>
+      buckets.filter((b) =>
+        ["__other_mail__", "__self_hosted__", "__no_mail__"].includes(b.id)
+      ),
+    [buckets]
+  );
+
+  // Pre-fill the suggestion box from an unclassified bucket: use its most
+  // common MX host, with a couple of example domains as context.
+  function suggestFixFor(b: Bucket) {
+    const hosts = new Map<string, number>();
+    for (const d of b.domains) {
+      for (const h of resultByDomain[d]?.mx ?? []) hosts.set(h, (hosts.get(h) ?? 0) + 1);
+    }
+    const topHost = [...hosts.entries()].sort((a, b2) => b2[1] - a[1])[0]?.[0] ?? "";
+    setSuggestValue(topHost);
+    setSuggestNote(
+      `Seen on ${b.domains.length} domain(s), e.g. ${b.domains.slice(0, 3).join(", ")}. Currently bucketed as "${b.label}".`
+    );
+    setSuggestMsg(null);
+    setSuggestOpen(true);
+    setTimeout(() => document.getElementById("suggest-box")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
   }
 
   function toggleBucketSelect(id: string) {
@@ -687,14 +743,14 @@ export default function Sorter() {
   return (
     <div className="space-y-6">
       {blocked && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 light:text-amber-800">
           ⚠️ MailSift is already open in another tab. On the free plan you can only sort in one tab at
           a time. Close the other tab, then reload here.
         </div>
       )}
 
       {restoredNote && (
-        <div className="flex items-center justify-between rounded-xl border border-brand-400/30 bg-brand-500/10 px-4 py-2.5 text-sm text-brand-400">
+        <div className="flex items-center justify-between rounded-xl border border-brand-400/30 bg-brand-500/10 px-4 py-2.5 text-sm text-brand-400 light:text-brand-600">
           <span>↩ {restoredNote}</span>
           <button
             onClick={() => {
@@ -704,7 +760,7 @@ export default function Sorter() {
               setText("");
               setRestoredNote(null);
             }}
-            className="text-xs text-white/50 hover:text-white/80"
+            className="text-xs text-fg/50 hover:text-fg/80"
           >
             Clear
           </button>
@@ -712,11 +768,11 @@ export default function Sorter() {
       )}
 
       {history.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-ink-800/40 px-4 py-2.5">
+        <div className="rounded-xl border border-fg/10 bg-ink-800/40 px-4 py-2.5">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowHistory((s) => !s)}
-              className="text-xs font-medium text-white/60 hover:text-white/90"
+              className="text-xs font-medium text-fg/60 hover:text-fg/90"
             >
               🕘 Recent sorts ({history.length}) {showHistory ? "▾" : "▸"}
             </button>
@@ -726,7 +782,7 @@ export default function Sorter() {
                   localStorage.removeItem(HISTORY_KEY);
                   setHistory([]);
                 }}
-                className="ml-auto text-xs text-white/40 hover:text-white/70"
+                className="ml-auto text-xs text-fg/40 hover:text-fg/70"
               >
                 Clear history
               </button>
@@ -738,12 +794,12 @@ export default function Sorter() {
                 <button
                   key={h.id}
                   onClick={() => restoreHistory(h)}
-                  className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/80 hover:bg-white/[0.07]"
+                  className="flex items-center gap-2 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-1.5 text-xs text-fg/80 hover:bg-fg/[0.07]"
                   title={new Date(h.ts).toLocaleString()}
                 >
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: h.topColor }} />
                   {h.count.toLocaleString()} domains · top {h.top}
-                  <span className="text-white/30">{new Date(h.ts).toLocaleDateString()}</span>
+                  <span className="text-fg/30">{new Date(h.ts).toLocaleDateString()}</span>
                 </button>
               ))}
             </div>
@@ -753,10 +809,10 @@ export default function Sorter() {
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* Input */}
-        <div className="rounded-2xl border border-white/10 bg-ink-800/60 p-5 backdrop-blur">
+        <div className="rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">Your list</h2>
-            <span className="text-xs text-white/40">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-fg/60">Your list</h2>
+            <span className="text-xs text-fg/40">
               {parsed.domains.length.toLocaleString()} unique · {parsed.invalid} skipped
             </span>
           </div>
@@ -774,7 +830,7 @@ export default function Sorter() {
               if (f) handleFile(f);
             }}
             className={`relative rounded-xl border-2 border-dashed transition ${
-              dragOver ? "border-brand-400 bg-brand-500/10" : "border-white/10"
+              dragOver ? "border-brand-400 bg-brand-500/10" : "border-fg/10"
             }`}
           >
             <textarea
@@ -788,14 +844,14 @@ export default function Sorter() {
                 }
               }}
               placeholder={"Paste domains or emails here...\n\nsales@hinet.net, acme.com; example.org\nfoo.io  bar.net"}
-              className="h-56 w-full resize-none rounded-xl bg-transparent p-4 text-sm text-white/90 outline-none placeholder:text-white/25"
+              className="h-56 w-full resize-none rounded-xl bg-transparent p-4 text-sm text-fg/90 outline-none placeholder:text-fg/25"
             />
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
               onClick={() => fileRef.current?.click()}
-              className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+              className="rounded-lg border border-fg/15 bg-fg/5 px-3 py-2 text-sm text-fg/80 hover:bg-fg/10"
             >
               📎 Upload file
             </button>
@@ -813,40 +869,40 @@ export default function Sorter() {
             {text && (
               <button
                 onClick={downloadInput}
-                className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+                className="rounded-lg border border-fg/15 bg-fg/5 px-3 py-2 text-sm text-fg/80 hover:bg-fg/10"
               >
                 ⬇ Download input
               </button>
             )}
-            {fileName && <span className="text-xs text-white/40">Loaded: {fileName}</span>}
+            {fileName && <span className="text-xs text-fg/40">Loaded: {fileName}</span>}
             {text && (
               <button
                 onClick={() => {
                   setText("");
                   setFileName(null);
                 }}
-                className="text-xs text-white/40 hover:text-white/70"
+                className="text-xs text-fg/40 hover:text-fg/70"
               >
                 Clear
               </button>
             )}
-            <span className="ml-auto text-xs text-white/40">
+            <span className="ml-auto text-xs text-fg/40">
               CSV · TXT · XLSX · commas, semicolons, spaces, new lines
             </span>
           </div>
 
-          <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-white/60">
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-fg/60">
             <input
               type="checkbox"
               checked={deliverability}
               onChange={(e) => setDeliverability(e.target.checked)}
               className="h-3.5 w-3.5 accent-brand-500"
             />
-            Also check <strong className="text-white/80">SPF &amp; DMARC</strong> deliverability (a little slower)
+            Also check <strong className="text-fg/80">SPF &amp; DMARC</strong> deliverability (a little slower)
           </label>
 
           {exceedsQuota && (
-            <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200">
+            <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200 light:text-amber-800">
               ⚠️ That&rsquo;s {parsed.domains.length.toLocaleString()} domains, but you only have{" "}
               <strong>{quota.remaining.toLocaleString()}</strong> left in this 6-hour window
               {quota.resetAt && <> (resets in {formatCountdown(quota.resetAt)})</>}. Remove some, or
@@ -869,25 +925,32 @@ export default function Sorter() {
           </button>
 
           {progress && (
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-fg/10">
               <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
             </div>
           )}
 
-          {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+          {error && <p className="mt-3 text-sm text-red-300 light:text-red-600">{error}</p>}
 
-          <div className="mt-4 flex items-center justify-between text-xs text-white/40">
-            <span className={busy ? "text-brand-400" : ""}>
+          {sortSummary && !busy && !error && (
+            <p className="animate-fade-up mt-3 text-sm text-emerald-300 light:text-emerald-700">
+              ✓ Sorted {sortSummary.count.toLocaleString()} domain
+              {sortSummary.count === 1 ? "" : "s"} in {(sortSummary.ms / 1000).toFixed(1)}s
+            </p>
+          )}
+
+          <div className="mt-4 flex items-center justify-between text-xs text-fg/40">
+            <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>
               {liveUsed.toLocaleString()} / {quota.limit.toLocaleString()} used
               {quota.resetAt && <> · resets in {formatCountdown(quota.resetAt)}</>}
             </span>
-            <span className={busy ? "text-brand-400" : ""}>{liveRemaining.toLocaleString()} left · 20k / 6h</span>
+            <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>{liveRemaining.toLocaleString()} left · 20k / 6h</span>
           </div>
 
           {(results.length > 0 || history.length > 0 || text) && (
             <button
               onClick={clearCache}
-              className="mt-2 text-[11px] text-white/30 hover:text-white/60"
+              className="mt-2 text-[11px] text-fg/30 hover:text-fg/60"
               title="Clears your saved results and recent-sort history. Your 6-hour usage limit is NOT reset."
             >
               🧹 Clear saved history &amp; cache
@@ -896,26 +959,26 @@ export default function Sorter() {
         </div>
 
         {/* Results summary */}
-        <div className="rounded-2xl border border-white/10 bg-ink-800/60 p-5 backdrop-blur">
+        <div className="rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-fg/60">
               {dimLabel} {sortedCount > 0 && `· ${sortedCount.toLocaleString()}`}
             </h2>
             {results.length > 0 && (
               <div className="flex items-center gap-3">
-                <span className="text-[10px] uppercase text-white/30">Export</span>
-                <button onClick={exportEmailsAll} className="text-xs text-brand-400 hover:text-brand-400/80" title="Just the email addresses, one per line">
+                <span className="text-[10px] uppercase text-fg/30">Export</span>
+                <button onClick={exportEmailsAll} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="Just the email addresses, one per line">
                   Emails
                 </button>
-                <button onClick={exportAll} className="text-xs text-brand-400 hover:text-brand-400/80" title="CSV table with the columns you pick below">
+                <button onClick={exportAll} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="CSV table with the columns you pick below">
                   CSV
                 </button>
-                <button onClick={exportXlsx} className="text-xs text-brand-400 hover:text-brand-400/80" title="Excel workbook: Summary + Results (selected columns)">
+                <button onClick={exportXlsx} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="Excel workbook: Summary + Results (selected columns)">
                   XLSX
                 </button>
                 <button
                   onClick={() => setShowExportCols((s) => !s)}
-                  className={`text-xs ${showExportCols ? "text-white/80" : "text-white/40"} hover:text-white/80`}
+                  className={`text-xs ${showExportCols ? "text-fg/80" : "text-fg/40"} hover:text-fg/80`}
                   title="Choose which columns the CSV/XLSX include"
                 >
                   Columns ▾
@@ -926,18 +989,18 @@ export default function Sorter() {
 
           {/* Export column picker */}
           {results.length > 0 && showExportCols && (
-            <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+            <div className="mb-4 rounded-xl border border-fg/10 bg-fg/[0.02] p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[11px] uppercase text-white/40">Columns for CSV / XLSX</span>
+                <span className="text-[11px] uppercase text-fg/40">Columns for CSV / XLSX</span>
                 <div className="flex gap-2 text-[11px]">
-                  <button onClick={() => setExportCols(EXPORT_COLUMNS.map((c) => c.key))} className="text-brand-400 hover:text-brand-400/80">All</button>
-                  <button onClick={() => setExportCols(["input"])} className="text-brand-400 hover:text-brand-400/80">Email only</button>
-                  <button onClick={() => setExportCols(DEFAULT_EXPORT_COLS)} className="text-white/40 hover:text-white/70">Reset</button>
+                  <button onClick={() => setExportCols(EXPORT_COLUMNS.map((c) => c.key))} className="text-brand-400 light:text-brand-600 hover:text-brand-400/80">All</button>
+                  <button onClick={() => setExportCols(["input"])} className="text-brand-400 light:text-brand-600 hover:text-brand-400/80">Email only</button>
+                  <button onClick={() => setExportCols(DEFAULT_EXPORT_COLS)} className="text-fg/40 hover:text-fg/70">Reset</button>
                 </div>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                 {EXPORT_COLUMNS.map((c) => (
-                  <label key={c.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-white/70">
+                  <label key={c.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-fg/70">
                     <input
                       type="checkbox"
                       checked={exportCols.includes(c.key)}
@@ -956,13 +1019,13 @@ export default function Sorter() {
           )}
 
           {/* Dimension toggle */}
-          <div className="mb-4 inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
+          <div className="mb-4 inline-flex rounded-lg border border-fg/10 bg-fg/[0.03] p-0.5 text-xs">
             {(["provider", "registrar"] as Dimension[]).map((d) => (
               <button
                 key={d}
                 onClick={() => switchDimension(d)}
                 className={`rounded-md px-3 py-1.5 font-medium transition ${
-                  dimension === d ? "bg-brand-500 text-white" : "text-white/50 hover:text-white/80"
+                  dimension === d ? "bg-brand-500 text-white" : "text-fg/50 hover:text-fg/80"
                 }`}
               >
                 {d === "provider" ? "Mail provider" : "Registrar"}
@@ -971,16 +1034,16 @@ export default function Sorter() {
           </div>
 
           {results.length === 0 ? (
-            <div className="flex h-48 flex-col items-center justify-center text-center text-sm text-white/30">
+            <div className="flex h-48 flex-col items-center justify-center text-center text-sm text-fg/30">
               <div className="mb-2 text-3xl">🗂️</div>
               Sorted {dimLabel.toLowerCase()} will appear here, each in its own bucket.
             </div>
           ) : dimension === "registrar" && regBusy && buckets.length === 0 ? (
-            <div className="flex h-48 flex-col items-center justify-center text-center text-sm text-white/40">
+            <div className="flex h-48 flex-col items-center justify-center text-center text-sm text-fg/40">
               <div className="mb-2 text-2xl">🔎</div>
               Looking up registrars via RDAP…
               {regProgress && (
-                <span className="mt-1 text-xs text-white/30">
+                <span className="mt-1 text-xs text-fg/30">
                   {regProgress.done.toLocaleString()} / {regProgress.total.toLocaleString()}
                 </span>
               )}
@@ -988,7 +1051,7 @@ export default function Sorter() {
           ) : (
             <>
               {dimension === "registrar" && regBusy && regProgress && (
-                <div className="mb-3 text-xs text-white/40">
+                <div className="mb-3 text-xs text-fg/40">
                   Loading registrars… {regProgress.done.toLocaleString()} / {regProgress.total.toLocaleString()}
                 </div>
               )}
@@ -997,12 +1060,28 @@ export default function Sorter() {
                   value={bucketFilter}
                   onChange={(e) => setBucketFilter(e.target.value)}
                   placeholder={`Filter ${dimLabel.toLowerCase()}…`}
-                  className="mb-3 w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-1.5 text-xs text-white/80 outline-none placeholder:text-white/25 focus:border-brand-400"
+                  className="mb-3 w-full rounded-lg border border-fg/10 bg-ink-900 px-3 py-1.5 text-xs text-fg/80 outline-none placeholder:text-fg/25 focus:border-brand-400"
                 />
               )}
-              {/* Select-all + bulk download bar */}
+              {/* Quick-jump to the buckets people check first */}
+              {jumpTargets.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className="text-fg/30">Jump to:</span>
+                  {jumpTargets.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setActiveBucket(b.id)}
+                      className="rounded-full border border-fg/10 bg-fg/[0.04] px-2 py-0.5 text-fg/60 hover:border-brand-400/40 hover:text-fg/90"
+                    >
+                      {b.label} · {b.domains.length.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Select-all + format + bulk download bar */}
               {visibleBuckets.length > 0 && (
-                <div className="mb-2 flex items-center gap-2 text-xs text-white/50">
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-fg/50">
                   <label className="flex cursor-pointer items-center gap-1.5" title="Select every bucket">
                     <input
                       type="checkbox"
@@ -1015,13 +1094,29 @@ export default function Sorter() {
                     />
                     Select all
                   </label>
+
+                  {/* Download format */}
+                  <div className="inline-flex overflow-hidden rounded-md border border-fg/10" title="Format for bucket downloads">
+                    {(["csv", "txt", "xlsx"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setDlFormat(f)}
+                        className={`px-1.5 py-0.5 text-[10px] uppercase transition ${
+                          dlFormat === f ? "bg-brand-500 text-white" : "text-fg/40 hover:text-fg/70"
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+
                   <button
                     onClick={() => downloadBuckets(visibleBuckets.filter((b) => selectedBuckets.has(b.id)))}
                     disabled={selectedVisibleCount === 0 || zipping}
-                    className="ml-auto rounded-md bg-brand-500/90 px-2.5 py-1 font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30"
+                    className="ml-auto rounded-md bg-brand-500/90 px-2.5 py-1 font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-fg/10 disabled:text-fg/30"
                   >
                     {zipping
-                      ? "Zipping…"
+                      ? "Preparing…"
                       : `⬇ Download ${selectedVisibleCount || ""} selected${selectedVisibleCount > 1 ? " (.zip)" : ""}`}
                   </button>
                 </div>
@@ -1029,7 +1124,7 @@ export default function Sorter() {
 
               <div className="scroll-slim max-h-[400px] space-y-2 overflow-y-auto pr-1">
                 {visibleBuckets.length === 0 && (
-                  <p className="py-4 text-center text-xs text-white/30">No {dimLabel.toLowerCase()} match “{bucketFilter}”.</p>
+                  <p className="py-4 text-center text-xs text-fg/30">No {dimLabel.toLowerCase()} match “{bucketFilter}”.</p>
                 )}
                 {visibleBuckets.map((b) => {
                   const pct = sortedCount ? Math.round((b.domains.length / sortedCount) * 100) : 0;
@@ -1042,7 +1137,7 @@ export default function Sorter() {
                           ? "border-brand-400/60 bg-brand-500/10"
                           : isSel
                           ? "border-brand-400/30 bg-brand-500/[0.06]"
-                          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                          : "border-fg/10 bg-fg/[0.03] hover:bg-fg/[0.06]"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1058,22 +1153,22 @@ export default function Sorter() {
                           className="flex min-w-0 flex-1 items-center gap-2 text-left"
                         >
                           <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
-                          <span className="truncate text-sm font-medium text-white/90">{b.label}</span>
-                          <span className="ml-auto text-sm font-semibold text-white/90">
+                          <span className="truncate text-sm font-medium text-fg/90">{b.label}</span>
+                          <span className="ml-auto text-sm font-semibold text-fg/90">
                             {b.domains.length.toLocaleString()}
                           </span>
-                          <span className="w-10 text-right text-xs text-white/40">{pct}%</span>
+                          <span className="w-10 text-right text-xs text-fg/40">{pct}%</span>
                         </button>
                         <button
                           onClick={() => downloadBuckets([b])}
                           title={`Download ${b.label}`}
                           aria-label={`Download ${b.label}`}
-                          className="shrink-0 rounded p-1 text-white/40 hover:bg-white/10 hover:text-brand-400"
+                          className="shrink-0 rounded p-1 text-fg/40 hover:bg-fg/10 hover:text-brand-400 light:text-brand-600"
                         >
                           ⬇
                         </button>
                       </div>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-fg/10">
                         <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: b.color }} />
                       </div>
                     </div>
@@ -1087,8 +1182,8 @@ export default function Sorter() {
 
       {/* Insights */}
       {insights && (
-        <div className="animate-fade-up rounded-2xl border border-white/10 bg-ink-800/60 p-5 backdrop-blur">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-white/60">Insights</h2>
+        <div className="animate-fade-up rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-fg/60">Insights</h2>
           <div className="grid gap-5 lg:grid-cols-[auto_1fr]">
             <DistributionDonut buckets={buckets} total={sortedCount} label={dimLabel} />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
@@ -1111,27 +1206,33 @@ export default function Sorter() {
 
       {/* Drill-down for a selected bucket */}
       {shown && (
-        <div className="animate-fade-up rounded-2xl border border-white/10 bg-ink-800/60 p-5 backdrop-blur">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-white/90">
+        <div ref={drilldownRef} className="animate-fade-up rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-fg/90">
               <span className="h-3 w-3 rounded-full" style={{ backgroundColor: shown.color }} />
               {shown.label} · {shown.domains.length.toLocaleString()}
             </h3>
-            <div className="flex items-center gap-3">
-              <button onClick={() => copyBucketDomains(shown)} className="text-xs text-brand-400 hover:text-brand-400/80">
+            <div className="flex flex-wrap items-center gap-3">
+              {["__other_mail__", "__self_hosted__"].includes(shown.id) && (
+                <button onClick={() => suggestFixFor(shown)} className="text-xs text-amber-300 light:text-amber-700 hover:text-amber-200 light:text-amber-800" title="Tell us which provider these belong to">
+                  💡 Suggest a fix
+                </button>
+              )}
+              <button onClick={() => copyBucketDomains(shown)} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80">
                 {copiedId === shown.id ? "✓ Copied" : "⧉ Copy emails"}
               </button>
-              <button onClick={() => exportBucketEmails(shown)} className="text-xs text-brand-400 hover:text-brand-400/80" title="Just the emails, one per line">
+              <button onClick={() => exportBucketEmails(shown)} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="Just the emails, one per line">
                 ⬇ Emails
               </button>
-              <button onClick={() => exportBucket(shown)} className="text-xs text-brand-400 hover:text-brand-400/80" title="Full table for this bucket">
+              <button onClick={() => exportBucket(shown)} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="Full table for this bucket">
                 ⬇ CSV
               </button>
             </div>
           </div>
-          <div className="scroll-slim max-h-72 overflow-y-auto rounded-lg border border-white/5">
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-ink-700/90 text-xs uppercase text-white/40">
+          {/* Scrolls in BOTH axes: the wide table must never push the page sideways. */}
+          <div className="scroll-slim max-h-72 overflow-auto rounded-lg border border-fg/5">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="sticky top-0 bg-ink-700/90 text-xs uppercase text-fg/40">
                 <tr>
                   <th className="px-3 py-2 font-medium">Email / domain</th>
                   <th className="px-3 py-2 font-medium">Domain</th>
@@ -1148,38 +1249,38 @@ export default function Sorter() {
                   const conf = r?.confidence ?? "none";
                   const confColor =
                     conf === "high"
-                      ? "bg-emerald-500/15 text-emerald-300"
+                      ? "bg-emerald-500/15 text-emerald-300 light:text-emerald-700"
                       : conf === "medium"
-                      ? "bg-amber-500/15 text-amber-300"
-                      : "bg-white/10 text-white/40";
+                      ? "bg-amber-500/15 text-amber-300 light:text-amber-700"
+                      : "bg-fg/10 text-fg/40";
                   // One row per original input — show the full email, never truncated.
                   return originalsFor(domain).map((input, idx) => (
-                    <tr key={domain + ":" + idx} className="border-t border-white/5">
-                      <td className="px-3 py-2 text-white/90">{input}</td>
-                      <td className="px-3 py-2 text-white/40">{domain}</td>
-                      <td className="px-3 py-2 text-white/60">{r?.provider ?? "—"}</td>
-                      <td className="px-3 py-2 text-white/60">{reg?.registrar ?? "—"}</td>
+                    <tr key={domain + ":" + idx} className="border-t border-fg/5">
+                      <td className="px-3 py-2 text-fg/90">{input}</td>
+                      <td className="px-3 py-2 text-fg/40">{domain}</td>
+                      <td className="px-3 py-2 text-fg/60">{r?.provider ?? "—"}</td>
+                      <td className="px-3 py-2 text-fg/60">{reg?.registrar ?? "—"}</td>
                       {deliverability && (
                         <td className="px-3 py-2 text-xs">
-                          <span className={r?.hasSpf ? "text-emerald-300" : "text-white/30"}>SPF {r?.hasSpf ? "✓" : "✗"}</span>
-                          <span className="mx-1 text-white/20">·</span>
-                          <span className={r?.hasDmarc ? "text-emerald-300" : "text-white/30"}>DMARC {r?.hasDmarc ? "✓" : "✗"}</span>
+                          <span className={r?.hasSpf ? "text-emerald-300 light:text-emerald-700" : "text-fg/30"}>SPF {r?.hasSpf ? "✓" : "✗"}</span>
+                          <span className="mx-1 text-fg/20">·</span>
+                          <span className={r?.hasDmarc ? "text-emerald-300 light:text-emerald-700" : "text-fg/30"}>DMARC {r?.hasDmarc ? "✓" : "✗"}</span>
                         </td>
                       )}
                       <td className="px-3 py-2 text-xs">
                         {r?.matchedPattern ? (
                           <span className="flex flex-wrap items-center gap-1.5">
                             <span className={`rounded px-1.5 py-0.5 uppercase ${confColor}`}>{conf}</span>
-                            <span className="text-white/50">
+                            <span className="text-fg/50">
                               {r.matchedBy} contains
-                              <code className="ml-1 rounded bg-white/10 px-1 text-white/70">
+                              <code className="ml-1 rounded bg-fg/10 px-1 text-fg/70">
                                 {r.matchedPattern}
                               </code>
                             </span>
-                            {r.evidence && <span className="text-white/30">({r.evidence})</span>}
+                            {r.evidence && <span className="text-fg/30">({r.evidence})</span>}
                           </span>
                         ) : (
-                          <span className="text-white/30">
+                          <span className="text-fg/30">
                             {(r?.matchedBy === "ns" ? r?.ns : r?.mx)?.slice(0, 1).join(", ") || "no records"}
                           </span>
                         )}
@@ -1194,32 +1295,32 @@ export default function Sorter() {
       )}
 
       {/* Suggest a missing mail host */}
-      <div className="rounded-2xl border border-white/10 bg-ink-800/40 p-5 backdrop-blur">
+      <div id="suggest-box" className="rounded-2xl border border-fg/10 bg-ink-800/40 p-4 backdrop-blur sm:p-5">
         <button
           onClick={() => setSuggestOpen((s) => !s)}
-          className="flex w-full items-center justify-between text-left text-sm font-medium text-white/70 hover:text-white/90"
+          className="flex w-full items-center justify-between text-left text-sm font-medium text-fg/70 hover:text-fg/90"
         >
           <span>💡 Missing a provider? Suggest a mail host (MX / NS) to add</span>
-          <span className="text-white/40">{suggestOpen ? "▾" : "▸"}</span>
+          <span className="text-fg/40">{suggestOpen ? "▾" : "▸"}</span>
         </button>
         {suggestOpen && (
           <div className="mt-4 space-y-3">
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-fg/40">
               Tell us a domain, MX host, or NS host we should recognize (e.g.{" "}
-              <code className="rounded bg-white/10 px-1">acme-mail.com</code> or{" "}
-              <code className="rounded bg-white/10 px-1">mx1.somehost.net</code>). We&rsquo;ll review and add it.
+              <code className="rounded bg-fg/10 px-1">acme-mail.com</code> or{" "}
+              <code className="rounded bg-fg/10 px-1">mx1.somehost.net</code>). We&rsquo;ll review and add it.
             </p>
             <input
               value={suggestValue}
               onChange={(e) => setSuggestValue(e.target.value)}
               placeholder="Domain, MX host, or NS host"
-              className="w-full rounded-lg border border-white/15 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-brand-400"
+              className="w-full rounded-lg border border-fg/15 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-brand-400"
             />
             <textarea
               value={suggestNote}
               onChange={(e) => setSuggestNote(e.target.value)}
               placeholder="Optional: which provider is it? Any details that help."
-              className="h-16 w-full resize-none rounded-lg border border-white/15 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-brand-400"
+              className="h-16 w-full resize-none rounded-lg border border-fg/15 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-brand-400"
             />
             <div className="flex items-center gap-3">
               <button
@@ -1229,7 +1330,7 @@ export default function Sorter() {
               >
                 {suggestSending ? "Sending…" : "Submit suggestion"}
               </button>
-              {suggestMsg && <span className="text-xs text-white/60">{suggestMsg}</span>}
+              {suggestMsg && <span className="text-xs text-fg/60">{suggestMsg}</span>}
             </div>
           </div>
         )}
@@ -1266,7 +1367,7 @@ function DistributionDonut({
     <div className="flex items-center gap-4">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${label} distribution`}>
         <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" className="stroke-fg/[0.08]" strokeWidth={stroke} />
           {segments.map((s, i) => {
             const dash = (s.value / safeTotal) * circ;
             const el = (
@@ -1286,19 +1387,19 @@ function DistributionDonut({
             return el;
           })}
         </g>
-        <text x="50%" y="47%" textAnchor="middle" className="fill-white/90" style={{ fontSize: 22, fontWeight: 700 }}>
+        <text x="50%" y="47%" textAnchor="middle" className="fill-fg/90" style={{ fontSize: 22, fontWeight: 700 }}>
           {total.toLocaleString()}
         </text>
-        <text x="50%" y="60%" textAnchor="middle" className="fill-white/40" style={{ fontSize: 9 }}>
+        <text x="50%" y="60%" textAnchor="middle" className="fill-fg/40" style={{ fontSize: 9 }}>
           domains
         </text>
       </svg>
       <div className="space-y-1">
         {segments.map((s, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-xs text-white/60">
+          <div key={i} className="flex items-center gap-1.5 text-xs text-fg/60">
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: s.color }} />
             <span className="max-w-[140px] truncate">{s.label}</span>
-            <span className="ml-auto text-white/40">{Math.round((s.value / safeTotal) * 100)}%</span>
+            <span className="ml-auto text-fg/40">{Math.round((s.value / safeTotal) * 100)}%</span>
           </div>
         ))}
       </div>
@@ -1318,13 +1419,13 @@ function Stat({
   accent?: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-      <div className="text-[11px] uppercase tracking-wide text-white/40">{label}</div>
-      <div className="mt-1 flex items-center gap-1.5 text-xl font-bold text-white/90">
+    <div className="rounded-xl border border-fg/10 bg-fg/[0.02] p-3">
+      <div className="text-[11px] uppercase tracking-wide text-fg/40">{label}</div>
+      <div className="mt-1 flex items-center gap-1.5 text-xl font-bold text-fg/90">
         {accent && <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: accent }} />}
         {value}
       </div>
-      {sub && <div className="mt-0.5 truncate text-[11px] text-white/40">{sub}</div>}
+      {sub && <div className="mt-0.5 truncate text-[11px] text-fg/40">{sub}</div>}
     </div>
   );
 }

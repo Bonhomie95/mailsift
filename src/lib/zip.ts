@@ -25,7 +25,7 @@ function concat(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-export function createZip(files: { name: string; content: string }[]): Blob {
+export function createZip(files: { name: string; content: string | Uint8Array }[]): Blob {
   const enc = new TextEncoder();
   const local: Uint8Array[] = [];
   const central: Uint8Array[] = [];
@@ -33,7 +33,7 @@ export function createZip(files: { name: string; content: string }[]): Blob {
 
   for (const f of files) {
     const nameBytes = enc.encode(f.name);
-    const data = enc.encode(f.content);
+    const data = typeof f.content === "string" ? enc.encode(f.content) : f.content;
     const crc = crc32(data);
 
     const localHeader = concat([

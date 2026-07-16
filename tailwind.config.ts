@@ -1,16 +1,22 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
+        // Semantic foreground. Every `text-fg/60`, `bg-fg/5`, `border-fg/10`
+        // flips automatically between themes (near-white in dark, near-black in
+        // light), so the whole alpha-based design translates for free.
+        fg: "rgb(var(--fg) / <alpha-value>)",
+        // Surfaces, darkest → lightest in dark mode (inverted in light mode).
         ink: {
-          950: "#0a0a12",
-          900: "#0f0f1a",
-          800: "#161627",
-          700: "#1e1e33",
-          600: "#2a2a45",
+          950: "rgb(var(--page) / <alpha-value>)",
+          900: "rgb(var(--panel-2) / <alpha-value>)",
+          800: "rgb(var(--panel) / <alpha-value>)",
+          700: "rgb(var(--panel-3) / <alpha-value>)",
+          600: "rgb(var(--panel-3) / <alpha-value>)",
         },
         brand: {
           400: "#8b7cff",
@@ -32,7 +38,13 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `light:` variant — surfaces flip automatically via the fg/ink tokens, but
+    // saturated accent colours need a darker shade to stay readable on white.
+    plugin(({ addVariant }) => {
+      addVariant("light", ':root[data-theme="light"] &');
+    }),
+  ],
 };
 
 export default config;
