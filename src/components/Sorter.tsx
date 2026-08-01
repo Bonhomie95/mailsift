@@ -89,7 +89,7 @@ const DEFAULT_EXPORT_COLS = [
 
 export default function Sorter() {
   const { blocked } = useSingleTab();
-  const quota = useSessionQuota();
+  const quota = useSessionQuota("mail");
 
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
@@ -827,7 +827,7 @@ export default function Sorter() {
   const liveUsed = Math.min(quota.limit, quota.used + liveDone);
   const liveRemaining = Math.max(0, quota.remaining - liveDone);
 
-  // Would this list blow past the remaining 6-hour allowance? (checked up-front)
+  // Would this list blow past the remaining 3-hour allowance? (checked up-front)
   const exceedsQuota = !busy && parsed.domains.length > quota.remaining;
 
   const selectedVisibleCount = visibleBuckets.filter((b) =>
@@ -1020,7 +1020,7 @@ export default function Sorter() {
               ⚠️ That&rsquo;s {parsed.domains.length.toLocaleString()} domains,
               but you only have{" "}
               <strong>{quota.remaining.toLocaleString()}</strong> left in this
-              6-hour window
+              3-hour window
               {quota.resetAt && (
                 <> (resets in {formatCountdown(quota.resetAt)})</>
               )}
@@ -1075,7 +1075,7 @@ export default function Sorter() {
               )}
             </span>
             <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>
-              {liveRemaining.toLocaleString()} left · 20k / 6h
+              {liveRemaining.toLocaleString()} left · 50k / 3h
             </span>
           </div>
 
@@ -1083,7 +1083,7 @@ export default function Sorter() {
             <button
               onClick={clearCache}
               className="mt-2 text-[11px] text-fg/30 hover:text-fg/60"
-              title="Clears your saved results and recent-sort history. Your 6-hour usage limit is NOT reset."
+              title="Clears your saved results and recent-sort history. Your 3-hour usage limit is NOT reset."
             >
               🧹 Clear saved history &amp; cache
             </button>

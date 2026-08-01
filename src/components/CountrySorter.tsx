@@ -61,7 +61,7 @@ const RATING_STYLE: Record<SendRating, string> = {
 
 export default function CountrySorter() {
   const { blocked } = useSingleTab();
-  const quota = useSessionQuota();
+  const quota = useSessionQuota("country");
 
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
@@ -538,7 +538,7 @@ export default function CountrySorter() {
           {exceedsQuota && (
             <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200 light:text-amber-800">
               ⚠️ That&rsquo;s {parsed.domains.length.toLocaleString()} domains, but you only have{" "}
-              <strong>{quota.remaining.toLocaleString()}</strong> left in this 6-hour window
+              <strong>{quota.remaining.toLocaleString()}</strong> left in this 3-hour window
               {quota.resetAt && <> (resets in {formatCountdown(quota.resetAt)})</>}.
             </div>
           )}
@@ -577,7 +577,7 @@ export default function CountrySorter() {
               {liveUsed.toLocaleString()} / {quota.limit.toLocaleString()} used
               {quota.resetAt && <> · resets in {formatCountdown(quota.resetAt)}</>}
             </span>
-            <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>{liveRemaining.toLocaleString()} left · 20k / 6h</span>
+            <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>{liveRemaining.toLocaleString()} left · 50k / 3h</span>
           </div>
 
           {(results.length > 0 || text) && (
