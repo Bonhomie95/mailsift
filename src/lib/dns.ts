@@ -139,6 +139,31 @@ async function queryTxt(name: string): Promise<string[]> {
   return [];
 }
 
+/**
+ * Resolve a domain's IPv4 (A) addresses over DoH. Used by the Country Sorter's
+ * offline IP-geolocation signal. Follows the same endpoint-fallback pattern as
+ * queryType; returns dotted-quad strings (may be empty).
+ */
+export async function queryA(domain: string): Promise<string[]> {
+  for (const endpoint of DOH_ENDPOINTS) {
+    try {
+      const url = `${endpoint}?name=${encodeURIComponent(domain)}&type=A`;
+      const res = await fetch(url, {
+        headers: { accept: "application/dns-json" },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) continue;
+      const json = (await res.json()) as DohResponse;
+      if (!json.Answer) return [];
+      // type 1 = A record; ignore CNAME (5) rows in the chain.
+      return json.Answer.filter((a) => a.type === 1 && a.data).map((a) => a.data.trim());
+    } catch {
+      // try next endpoint
+    }
+  }
+  return [];
+}
+
 export interface Deliverability {
   spf: boolean;
   dmarc: boolean;

@@ -56,3 +56,30 @@ export interface SortSummaryBucket {
   color: string;
   count: number;
 }
+
+/** One vote in country detection: a source pointing at a country. */
+export interface CountrySignal {
+  /** Which criterion produced this vote. */
+  source: "cctld" | "provider" | "ip" | "host";
+  /** ISO-3166 alpha-2 the source voted for. */
+  country: string;
+  /** Vote weight. */
+  weight: number;
+  /** Short human evidence, e.g. ".de", "Orange (FR)", "196.x IP", "ns1.host.de". */
+  evidence: string;
+}
+
+/** Streamed per-domain result from /api/country. */
+export interface CountryResult {
+  domain: string;
+  /** Winning ISO-3166 alpha-2, or null when no signal (Unknown bucket). */
+  country: string | null;
+  /** high = cctld/provider/ip evidence, medium = host-only, none = unknown. */
+  confidence: "high" | "medium" | "none";
+  /** The source that won. */
+  matchedBy: CountrySignal["source"] | "none";
+  /** All signals that fired, for the drill-down "why". */
+  signals: CountrySignal[];
+  mx: string[];
+  ns: string[];
+}

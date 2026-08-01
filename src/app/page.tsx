@@ -1,4 +1,4 @@
-import Sorter from "@/components/Sorter";
+import SorterTabs from "@/components/SorterTabs";
 import AdsterraBanner from "@/components/AdsterraBanner";
 import AdsterraPopup from "@/components/AdsterraPopup";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -18,7 +18,7 @@ export default function Home() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight">MailSift</h1>
-            <p className="text-xs text-fg/40">Sort domains by mail provider</p>
+            <p className="text-xs text-fg/40">Sort domains by mail provider &amp; country</p>
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm">
@@ -31,14 +31,15 @@ export default function Home() {
 
       <section className="mb-6 animate-fade-up sm:mb-8">
         <h2 className="max-w-2xl text-2xl font-bold leading-tight sm:text-4xl">
-          Drop in <span className="bg-gradient-to-r from-brand-400 to-indigo-300 bg-clip-text text-transparent">thousands of domains</span>.
-          Get them sorted by mail provider in seconds.
+          Drop in <span className="bg-gradient-to-r from-brand-400 to-indigo-300 bg-clip-text text-transparent">thousands of leads</span>.
+          Sort them by mail provider or by country in seconds.
         </h2>
         <p className="mt-3 max-w-2xl text-fg/50">
           MailSift reads live <strong className="text-fg/70">MX</strong> and{" "}
-          <strong className="text-fg/70">NS</strong> records to figure out who really hosts each
-          domain&rsquo;s email — Google Workspace, Microsoft 365, Zoho, Namecheap Private Email and
-          more — then buckets them for you. Paste a list or upload CSV / TXT / XLSX.
+          <strong className="text-fg/70">NS</strong> records to figure out who hosts each
+          domain&rsquo;s email — Google Workspace, Microsoft 365, Zoho and more — or which{" "}
+          <strong className="text-fg/70">country</strong> a lead is in, so you know the local time
+          and the best moment to reach them. Paste a list or upload CSV / TXT / XLSX.
         </p>
       </section>
 
@@ -48,7 +49,7 @@ export default function Home() {
         <AdsterraBanner adKey={BANNER_728} width={728} height={90} label="Ad slot · leaderboard 728×90" />
       </div>
 
-      <Sorter />
+      <SorterTabs />
 
       {/* Banner #2 — rectangle below the tool */}
       <div className="mt-8 flex justify-center">

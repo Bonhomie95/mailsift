@@ -46,6 +46,30 @@ Disabled automatically until a DSN is set.
 4. Test it: with the DSN set, throw an error somewhere or hit an API that fails,
    then check the Sentry **Issues** tab.
 
+---
+
+## 3. Country Sorter — offline IP geolocation (optional)
+
+**What it enables:** the Country Sorter's "IP geolocation" checkbox. It lets
+generic domains (`.com`/`.net` with no country-code TLD or regional provider) be
+placed by country from their server IP — with **no paid API and no runtime
+network calls**. The Country Sorter already works without this on its other
+signals (ccTLD, provider, MX/NS host TLD); IP geo just recovers the leftovers.
+
+1. Run once (and re-run every few months to refresh):
+   ```bash
+   npm run build:ip-country
+   ```
+   This downloads the five public-domain RIR (ARIN/RIPE/APNIC/AFRINIC/LACNIC)
+   allocation files and writes `src/data/ip-country.v4.bin` (~2.5 MB). No keys,
+   no cost.
+2. Restart the app. The checkbox now contributes the IP signal; without the file
+   it silently abstains.
+
+`next.config.js` already traces this asset into the `/api/country` serverless
+function (`experimental.outputFileTracingIncludes`), so it ships on deploy. The
+`.bin` is server-side only — it never reaches the browser.
+
 > Bundle note: the Sentry browser SDK adds ~60 kB to the client. If you want to
 > keep the tool lean, you can keep **server-only** monitoring (delete
 > `sentry.client.config.ts` and `src/app/global-error.tsx`) and still catch the

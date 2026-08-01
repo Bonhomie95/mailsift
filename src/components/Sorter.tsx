@@ -4,6 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { parseText } from "@/lib/parse";
 import { useSingleTab } from "@/lib/useSingleTab";
 import { useSessionQuota, FREE_SESSION_LIMIT } from "@/lib/useSessionQuota";
+import {
+  readFileToText,
+  formatCountdown,
+  tableToCsv,
+  downloadCsv,
+  downloadBlob,
+  fileSlug,
+  fileStamp,
+} from "@/lib/exportUtils";
 
 interface Result {
   domain: string;
@@ -69,55 +78,14 @@ const EXPORT_COLUMNS: { key: string; label: string }[] = [
   { key: "ns", label: "NS records" },
   { key: "registrar", label: "Registrar" },
 ];
-const DEFAULT_EXPORT_COLS = ["input", "domain", "provider", "mx", "ns", "registrar"];
-
-async function readFileToText(file: File): Promise<string> {
-  const name = file.name.toLowerCase();
-  const isSheet = /\.(xlsx|xls|xlsm|ods)$/.test(name);
-  if (!isSheet) return file.text();
-  const XLSX = await import("xlsx");
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array" });
-  const parts: string[] = [];
-  for (const sheetName of wb.SheetNames) parts.push(XLSX.utils.sheet_to_csv(wb.Sheets[sheetName]));
-  return parts.join("\n");
-}
-
-function formatCountdown(target: number): string {
-  const ms = Math.max(0, target - Date.now());
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m`;
-  return "<1m";
-}
-
-function tableToCsv(rows: string[][]): string {
-  return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-}
-
-function downloadCsv(filename: string, rows: string[][]) {
-  downloadBlob(filename, new Blob([tableToCsv(rows)], { type: "text/csv;charset=utf-8" }));
-}
-
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// Filesystem-safe slug + timestamp for export filenames.
-function fileSlug(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bucket";
-}
-function fileStamp(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-}
+const DEFAULT_EXPORT_COLS = [
+  "input",
+  "domain",
+  "provider",
+  "mx",
+  "ns",
+  "registrar",
+];
 
 export default function Sorter() {
   const { blocked } = useSingleTab();
@@ -126,7 +94,10 @@ export default function Sorter() {
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activeBucket, setActiveBucket] = useState<string | null>(null);
@@ -136,7 +107,10 @@ export default function Sorter() {
   const [dimension, setDimension] = useState<Dimension>("provider");
   const [regByDomain, setRegByDomain] = useState<Record<string, RegInfo>>({});
   const [regBusy, setRegBusy] = useState(false);
-  const [regProgress, setRegProgress] = useState<{ done: number; total: number } | null>(null);
+  const [regProgress, setRegProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const [restoredNote, setRestoredNote] = useState<string | null>(null);
   const [bucketFilter, setBucketFilter] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -145,10 +119,15 @@ export default function Sorter() {
   const [showHistory, setShowHistory] = useState(false);
   const [exportCols, setExportCols] = useState<string[]>(DEFAULT_EXPORT_COLS);
   const [showExportCols, setShowExportCols] = useState(false);
-  const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(new Set());
+  const [selectedBuckets, setSelectedBuckets] = useState<Set<string>>(
+    new Set(),
+  );
   const [zipping, setZipping] = useState(false);
   const [dlFormat, setDlFormat] = useState<"csv" | "txt" | "xlsx">("csv");
-  const [sortSummary, setSortSummary] = useState<{ count: number; ms: number } | null>(null);
+  const [sortSummary, setSortSummary] = useState<{
+    count: number;
+    ms: number;
+  } | null>(null);
   const drilldownRef = useRef<HTMLDivElement>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestValue, setSuggestValue] = useState("");
@@ -192,15 +171,16 @@ export default function Sorter() {
         dimension: Dimension;
         ts: number;
       };
-      if (!saved.results?.length || Date.now() - saved.ts > RESUME_MAX_AGE_MS) return;
+      if (!saved.results?.length || Date.now() - saved.ts > RESUME_MAX_AGE_MS)
+        return;
       setText(saved.text || "");
       setResults(saved.results);
       setRegByDomain(saved.regByDomain || {});
       setDimension(saved.dimension || "provider");
       setRestoredNote(
         `Restored your last sort of ${saved.results.length.toLocaleString()} domains from ${new Date(
-          saved.ts
-        ).toLocaleString()}.`
+          saved.ts,
+        ).toLocaleString()}.`,
       );
     } catch {
       /* ignore corrupt/oversized state */
@@ -241,7 +221,10 @@ export default function Sorter() {
       // Trim oldest entries until it fits in localStorage.
       for (let keep = next.length; keep >= 1; keep--) {
         try {
-          localStorage.setItem(HISTORY_KEY, JSON.stringify(next.slice(0, keep)));
+          localStorage.setItem(
+            HISTORY_KEY,
+            JSON.stringify(next.slice(0, keep)),
+          );
           return next.slice(0, keep);
         } catch {
           /* too big — try fewer */
@@ -258,14 +241,27 @@ export default function Sorter() {
     setDimension("provider");
     setActiveBucket(null);
     setShowHistory(false);
-    setRestoredNote(`Loaded a sort of ${entry.count.toLocaleString()} domains from ${new Date(entry.ts).toLocaleString()}.`);
+    setRestoredNote(
+      `Loaded a sort of ${entry.count.toLocaleString()} domains from ${new Date(entry.ts).toLocaleString()}.`,
+    );
   }
 
-  function persistSort(res: Result[], reg: Record<string, RegInfo>, dim: Dimension, srcText: string) {
+  function persistSort(
+    res: Result[],
+    reg: Record<string, RegInfo>,
+    dim: Dimension,
+    srcText: string,
+  ) {
     try {
       localStorage.setItem(
         RESUME_KEY,
-        JSON.stringify({ text: srcText, results: res, regByDomain: reg, dimension: dim, ts: Date.now() })
+        JSON.stringify({
+          text: srcText,
+          results: res,
+          regByDomain: reg,
+          dimension: dim,
+          ts: Date.now(),
+        }),
       );
     } catch {
       // Likely over the storage quota on a very large sort — skip silently.
@@ -301,12 +297,14 @@ export default function Sorter() {
       }
       b.domains.push(r.domain);
     }
-    return [...map.values()].sort((a, b) => b.domains.length - a.domains.length);
+    return [...map.values()].sort(
+      (a, b) => b.domains.length - a.domains.length,
+    );
   }, [results, dimension, regByDomain]);
 
   const sortedCount = useMemo(
     () => buckets.reduce((n, b) => n + b.domains.length, 0),
-    [buckets]
+    [buckets],
   );
 
   // Filter the bucket list by label (handy when there are dozens of providers).
@@ -339,22 +337,31 @@ export default function Sorter() {
     }
     const top = buckets[0];
     const bigThree = results.filter((r) =>
-      ["google-workspace", "microsoft-365"].includes(r.providerId)
+      ["google-workspace", "microsoft-365"].includes(r.providerId),
     ).length;
     const inputTokens = parsed.total;
     return {
       inputTokens,
       unique: results.length,
-      dedupPct: inputTokens ? Math.round((1 - results.length / inputTokens) * 100) : 0,
+      dedupPct: inputTokens
+        ? Math.round((1 - results.length / inputTokens) * 100)
+        : 0,
       providerCount: buckets.length,
       top,
-      topPct: top && sortedCount ? Math.round((top.domains.length / sortedCount) * 100) : 0,
+      topPct:
+        top && sortedCount
+          ? Math.round((top.domains.length / sortedCount) * 100)
+          : 0,
       mx,
       ns,
-      matchedPct: results.length ? Math.round(((mx + ns) / results.length) * 100) : 0,
+      matchedPct: results.length
+        ? Math.round(((mx + ns) / results.length) * 100)
+        : 0,
       none,
       noMail,
-      bigThreePct: results.length ? Math.round((bigThree / results.length) * 100) : 0,
+      bigThreePct: results.length
+        ? Math.round((bigThree / results.length) * 100)
+        : 0,
       delivChecked,
       spfPct: delivChecked ? Math.round((spf / delivChecked) * 100) : 0,
       dmarcPct: delivChecked ? Math.round((dmarc / delivChecked) * 100) : 0,
@@ -387,7 +394,9 @@ export default function Sorter() {
           body: JSON.stringify({ domains: slice }),
         });
         if (!res.ok) throw new Error("Registrar lookup failed.");
-        const j = (await res.json()) as { results: (RegInfo & { domain: string })[] };
+        const j = (await res.json()) as {
+          results: (RegInfo & { domain: string })[];
+        };
         for (const row of j.results)
           acc[row.domain] = {
             registrarId: row.registrarId,
@@ -396,7 +405,10 @@ export default function Sorter() {
             color: row.color,
           };
         setRegByDomain((prev) => ({ ...prev, ...acc }));
-        setRegProgress({ done: Math.min(i + REG_CHUNK, missing.length), total: missing.length });
+        setRegProgress({
+          done: Math.min(i + REG_CHUNK, missing.length),
+          total: missing.length,
+        });
       }
       // Update the saved session so registrar data survives a refresh too.
       persistSort(results, { ...regByDomain, ...acc }, "registrar", text);
@@ -412,23 +424,28 @@ export default function Sorter() {
     setDimension(next);
     setActiveBucket(null);
     setSelectedBuckets(new Set());
-    if (next === "registrar" && results.length) fetchRegistrars(results.map((r) => r.domain));
+    if (next === "registrar" && results.length)
+      fetchRegistrars(results.map((r) => r.domain));
   }
 
   async function runSort() {
     setError(null);
     if (blocked) {
-      setError("MailSift is already open in another tab. Close it to sort here.");
+      setError(
+        "MailSift is already open in another tab. Close it to sort here.",
+      );
       return;
     }
     const domains = parsed.domains;
     if (domains.length === 0) {
-      setError("No valid domains or emails found. Paste a list or upload a file.");
+      setError(
+        "No valid domains or emails found. Paste a list or upload a file.",
+      );
       return;
     }
     if (domains.length > quota.remaining) {
       setError(
-        `That's ${domains.length.toLocaleString()} domains but you only have ${quota.remaining.toLocaleString()} left this session (free limit ${FREE_SESSION_LIMIT.toLocaleString()}).`
+        `That's ${domains.length.toLocaleString()} domains but you only have ${quota.remaining.toLocaleString()} left this session (free limit ${FREE_SESSION_LIMIT.toLocaleString()}).`,
       );
       return;
     }
@@ -496,10 +513,14 @@ export default function Sorter() {
       }
       quota.add(domains.length);
       setRestoredNote(null);
-      setSortSummary({ count: collected.length, ms: performance.now() - startedAt });
+      setSortSummary({
+        count: collected.length,
+        ms: performance.now() - startedAt,
+      });
       persistSort(collected, regByDomain, dimension, text);
       pushHistory(collected, text);
-      if (dimension === "registrar") fetchRegistrars(collected.map((r) => r.domain));
+      if (dimension === "registrar")
+        fetchRegistrars(collected.map((r) => r.domain));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -512,25 +533,39 @@ export default function Sorter() {
   function cellValue(key: string, r: Result, input: string): string {
     const reg = regByDomain[r.domain];
     switch (key) {
-      case "input": return input;
-      case "domain": return r.domain;
-      case "provider": return r.provider;
-      case "confidence": return r.confidence ?? "";
-      case "matched_by": return r.matchedBy;
-      case "matched_pattern": return r.matchedPattern ?? "";
-      case "spf": return r.hasSpf === undefined ? "" : r.hasSpf ? "yes" : "no";
-      case "dmarc": return r.hasDmarc === undefined ? "" : r.hasDmarc ? "yes" : "no";
-      case "mx": return r.mx.join(" | ");
-      case "ns": return r.ns.join(" | ");
-      case "registrar": return reg?.registrar ?? "";
-      default: return "";
+      case "input":
+        return input;
+      case "domain":
+        return r.domain;
+      case "provider":
+        return r.provider;
+      case "confidence":
+        return r.confidence ?? "";
+      case "matched_by":
+        return r.matchedBy;
+      case "matched_pattern":
+        return r.matchedPattern ?? "";
+      case "spf":
+        return r.hasSpf === undefined ? "" : r.hasSpf ? "yes" : "no";
+      case "dmarc":
+        return r.hasDmarc === undefined ? "" : r.hasDmarc ? "yes" : "no";
+      case "mx":
+        return r.mx.join(" | ");
+      case "ns":
+        return r.ns.join(" | ");
+      case "registrar":
+        return reg?.registrar ?? "";
+      default:
+        return "";
     }
   }
 
   // Build a table (header + rows) from the currently-selected columns.
   function buildTable(source: Result[]): string[][] {
     const selected = exportCols.length ? exportCols : ["input"];
-    const cols = EXPORT_COLUMNS.filter((c) => selected.includes(c.key)).map((c) => c.key);
+    const cols = EXPORT_COLUMNS.filter((c) => selected.includes(c.key)).map(
+      (c) => c.key,
+    );
     const rows: string[][] = [cols];
     for (const r of source) {
       for (const input of originalsFor(r.domain)) {
@@ -553,29 +588,45 @@ export default function Sorter() {
 
   function exportBucket(b: Bucket) {
     const source = b.domains.map((d) => resultByDomain[d]).filter(Boolean);
-    downloadCsv(`mailsift-${b.id.replace(/[^a-z0-9]+/gi, "-")}.csv`, buildTable(source));
+    downloadCsv(
+      `mailsift-${b.id.replace(/[^a-z0-9]+/gi, "-")}.csv`,
+      buildTable(source),
+    );
   }
 
   // Build one file for a bucket in the chosen download format.
   //  txt  → just the emails, one per line
   //  csv  → table using the columns picked above
   //  xlsx → single-sheet workbook of the same table
-  async function bucketFile(b: Bucket): Promise<{ content: string | Uint8Array; ext: string }> {
+  async function bucketFile(
+    b: Bucket,
+  ): Promise<{ content: string | Uint8Array; ext: string }> {
     const source = b.domains.map((d) => resultByDomain[d]).filter(Boolean);
     if (dlFormat === "txt") {
-      return { content: source.flatMap((r) => originalsFor(r.domain)).join("\n"), ext: "txt" };
+      return {
+        content: source.flatMap((r) => originalsFor(r.domain)).join("\n"),
+        ext: "txt",
+      };
     }
     if (dlFormat === "xlsx") {
       const XLSX = await import("xlsx");
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildTable(source)), "Results");
-      const out = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.aoa_to_sheet(buildTable(source)),
+        "Results",
+      );
+      const out = XLSX.write(wb, {
+        type: "array",
+        bookType: "xlsx",
+      }) as ArrayBuffer;
       return { content: new Uint8Array(out), ext: "xlsx" };
     }
     return { content: tableToCsv(buildTable(source)), ext: "csv" };
   }
 
-  const bucketFilename = (b: Bucket, ext: string) => `mailsift_${fileSlug(b.label)}_${fileStamp()}.${ext}`;
+  const bucketFilename = (b: Bucket, ext: string) =>
+    `mailsift_${fileSlug(b.label)}_${fileStamp()}.${ext}`;
 
   // Download one bucket, or zip several. Used by the per-row icon and
   // "download selected".
@@ -587,8 +638,15 @@ export default function Sorter() {
         const { content, ext } = await bucketFile(list[0]);
         const blob =
           typeof content === "string"
-            ? new Blob([content], { type: ext === "csv" ? "text/csv;charset=utf-8" : "text/plain;charset=utf-8" })
-            : new Blob([content as BlobPart], { type: "application/octet-stream" });
+            ? new Blob([content], {
+                type:
+                  ext === "csv"
+                    ? "text/csv;charset=utf-8"
+                    : "text/plain;charset=utf-8",
+              })
+            : new Blob([content as BlobPart], {
+                type: "application/octet-stream",
+              });
         downloadBlob(bucketFilename(list[0], ext), blob);
         return;
       }
@@ -604,7 +662,10 @@ export default function Sorter() {
         if (n) name = `${fileSlug(b.label)}-${n}.${ext}`;
         files.push({ name, content });
       }
-      downloadBlob(`mailsift_${dimension}s_${fileStamp()}.zip`, createZip(files));
+      downloadBlob(
+        `mailsift_${dimension}s_${fileStamp()}.zip`,
+        createZip(files),
+      );
     } finally {
       setZipping(false);
     }
@@ -614,8 +675,12 @@ export default function Sorter() {
   useEffect(() => {
     if (!activeBucket) return;
     const t = setTimeout(
-      () => drilldownRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
-      60
+      () =>
+        drilldownRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        }),
+      60,
     );
     return () => clearTimeout(t);
   }, [activeBucket]);
@@ -624,9 +689,9 @@ export default function Sorter() {
   const jumpTargets = useMemo(
     () =>
       buckets.filter((b) =>
-        ["__other_mail__", "__self_hosted__", "__no_mail__"].includes(b.id)
+        ["__other_mail__", "__self_hosted__", "__no_mail__"].includes(b.id),
       ),
-    [buckets]
+    [buckets],
   );
 
   // Pre-fill the suggestion box from an unclassified bucket: use its most
@@ -634,16 +699,24 @@ export default function Sorter() {
   function suggestFixFor(b: Bucket) {
     const hosts = new Map<string, number>();
     for (const d of b.domains) {
-      for (const h of resultByDomain[d]?.mx ?? []) hosts.set(h, (hosts.get(h) ?? 0) + 1);
+      for (const h of resultByDomain[d]?.mx ?? [])
+        hosts.set(h, (hosts.get(h) ?? 0) + 1);
     }
-    const topHost = [...hosts.entries()].sort((a, b2) => b2[1] - a[1])[0]?.[0] ?? "";
+    const topHost =
+      [...hosts.entries()].sort((a, b2) => b2[1] - a[1])[0]?.[0] ?? "";
     setSuggestValue(topHost);
     setSuggestNote(
-      `Seen on ${b.domains.length} domain(s), e.g. ${b.domains.slice(0, 3).join(", ")}. Currently bucketed as "${b.label}".`
+      `Seen on ${b.domains.length} domain(s), e.g. ${b.domains.slice(0, 3).join(", ")}. Currently bucketed as "${b.label}".`,
     );
     setSuggestMsg(null);
     setSuggestOpen(true);
-    setTimeout(() => document.getElementById("suggest-box")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+    setTimeout(
+      () =>
+        document
+          .getElementById("suggest-box")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+      60,
+    );
   }
 
   function toggleBucketSelect(id: string) {
@@ -655,7 +728,8 @@ export default function Sorter() {
   }
   function toggleSelectAll() {
     const ids = visibleBuckets.map((b) => b.id);
-    const allSelected = ids.length > 0 && ids.every((id) => selectedBuckets.has(id));
+    const allSelected =
+      ids.length > 0 && ids.every((id) => selectedBuckets.has(id));
     setSelectedBuckets(allSelected ? new Set() : new Set(ids));
   }
 
@@ -691,12 +765,15 @@ export default function Sorter() {
 
   // Emails-only exports (just the addresses, one per line — no other columns).
   function exportEmailsAll() {
-    downloadText("mailsift-emails.txt", results.flatMap((r) => originalsFor(r.domain)).join("\n"));
+    downloadText(
+      "mailsift-emails.txt",
+      results.flatMap((r) => originalsFor(r.domain)).join("\n"),
+    );
   }
   function exportBucketEmails(b: Bucket) {
     downloadText(
       `mailsift-${b.id.replace(/[^a-z0-9]+/gi, "-")}-emails.txt`,
-      b.domains.flatMap((d) => originalsFor(d)).join("\n")
+      b.domains.flatMap((d) => originalsFor(d)).join("\n"),
     );
   }
 
@@ -707,10 +784,24 @@ export default function Sorter() {
 
     const summary = [[dimLabel, "Count", "Share %"]];
     for (const b of buckets)
-      summary.push([b.label, String(b.domains.length), String(sortedCount ? Math.round((b.domains.length / sortedCount) * 100) : 0)]);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "Summary");
+      summary.push([
+        b.label,
+        String(b.domains.length),
+        String(
+          sortedCount ? Math.round((b.domains.length / sortedCount) * 100) : 0,
+        ),
+      ]);
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet(summary),
+      "Summary",
+    );
 
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildTable(results)), "Results");
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet(buildTable(results)),
+      "Results",
+    );
     XLSX.writeFile(wb, "mailsift-report.xlsx");
   }
 
@@ -726,7 +817,9 @@ export default function Sorter() {
     }
   }
 
-  const shown = activeBucket ? buckets.find((b) => b.id === activeBucket) : null;
+  const shown = activeBucket
+    ? buckets.find((b) => b.id === activeBucket)
+    : null;
   const dimLabel = dimension === "provider" ? "Providers" : "Registrars";
 
   // Live quota: while sorting, count down as domains resolve (committed at the end).
@@ -737,15 +830,18 @@ export default function Sorter() {
   // Would this list blow past the remaining 6-hour allowance? (checked up-front)
   const exceedsQuota = !busy && parsed.domains.length > quota.remaining;
 
-  const selectedVisibleCount = visibleBuckets.filter((b) => selectedBuckets.has(b.id)).length;
-  const allVisibleSelected = visibleBuckets.length > 0 && selectedVisibleCount === visibleBuckets.length;
+  const selectedVisibleCount = visibleBuckets.filter((b) =>
+    selectedBuckets.has(b.id),
+  ).length;
+  const allVisibleSelected =
+    visibleBuckets.length > 0 && selectedVisibleCount === visibleBuckets.length;
 
   return (
     <div className="space-y-6">
       {blocked && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 light:text-amber-800">
-          ⚠️ MailSift is already open in another tab. On the free plan you can only sort in one tab at
-          a time. Close the other tab, then reload here.
+          ⚠️ MailSift is already open in another tab. On the free plan you can
+          only sort in one tab at a time. Close the other tab, then reload here.
         </div>
       )}
 
@@ -797,9 +893,14 @@ export default function Sorter() {
                   className="flex items-center gap-2 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-1.5 text-xs text-fg/80 hover:bg-fg/[0.07]"
                   title={new Date(h.ts).toLocaleString()}
                 >
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: h.topColor }} />
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: h.topColor }}
+                  />
                   {h.count.toLocaleString()} domains · top {h.top}
-                  <span className="text-fg/30">{new Date(h.ts).toLocaleDateString()}</span>
+                  <span className="text-fg/30">
+                    {new Date(h.ts).toLocaleDateString()}
+                  </span>
                 </button>
               ))}
             </div>
@@ -811,9 +912,12 @@ export default function Sorter() {
         {/* Input */}
         <div className="rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-fg/60">Your list</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-fg/60">
+              Your list
+            </h2>
             <span className="text-xs text-fg/40">
-              {parsed.domains.length.toLocaleString()} unique · {parsed.invalid} skipped
+              {parsed.domains.length.toLocaleString()} unique · {parsed.invalid}{" "}
+              skipped
             </span>
           </div>
 
@@ -838,12 +942,19 @@ export default function Sorter() {
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 // Cmd/Ctrl+Enter to sort without reaching for the mouse.
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !busy && !exceedsQuota) {
+                if (
+                  (e.metaKey || e.ctrlKey) &&
+                  e.key === "Enter" &&
+                  !busy &&
+                  !exceedsQuota
+                ) {
                   e.preventDefault();
                   runSort();
                 }
               }}
-              placeholder={"Paste domains or emails here...\n\nsales@hinet.net, acme.com; example.org\nfoo.io  bar.net"}
+              placeholder={
+                "Paste domains or emails here...\n\nsales@hinet.net, acme.com; example.org\nfoo.io  bar.net"
+              }
               className="h-56 w-full resize-none rounded-xl bg-transparent p-4 text-sm text-fg/90 outline-none placeholder:text-fg/25"
             />
           </div>
@@ -874,7 +985,9 @@ export default function Sorter() {
                 ⬇ Download input
               </button>
             )}
-            {fileName && <span className="text-xs text-fg/40">Loaded: {fileName}</span>}
+            {fileName && (
+              <span className="text-xs text-fg/40">Loaded: {fileName}</span>
+            )}
             {text && (
               <button
                 onClick={() => {
@@ -898,21 +1011,28 @@ export default function Sorter() {
               onChange={(e) => setDeliverability(e.target.checked)}
               className="h-3.5 w-3.5 accent-brand-500"
             />
-            Also check <strong className="text-fg/80">SPF &amp; DMARC</strong> deliverability (a little slower)
+            Also check <strong className="text-fg/80">SPF &amp; DMARC</strong>{" "}
+            deliverability (a little slower)
           </label>
 
           {exceedsQuota && (
             <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200 light:text-amber-800">
-              ⚠️ That&rsquo;s {parsed.domains.length.toLocaleString()} domains, but you only have{" "}
-              <strong>{quota.remaining.toLocaleString()}</strong> left in this 6-hour window
-              {quota.resetAt && <> (resets in {formatCountdown(quota.resetAt)})</>}. Remove some, or
-              wait for the window to reset.
+              ⚠️ That&rsquo;s {parsed.domains.length.toLocaleString()} domains,
+              but you only have{" "}
+              <strong>{quota.remaining.toLocaleString()}</strong> left in this
+              6-hour window
+              {quota.resetAt && (
+                <> (resets in {formatCountdown(quota.resetAt)})</>
+              )}
+              . Remove some, or wait for the window to reset.
             </div>
           )}
 
           <button
             onClick={runSort}
-            disabled={busy || blocked || parsed.domains.length === 0 || exceedsQuota}
+            disabled={
+              busy || blocked || parsed.domains.length === 0 || exceedsQuota
+            }
             className="mt-4 w-full rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-3 font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-400 hover:to-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy
@@ -920,31 +1040,43 @@ export default function Sorter() {
                 ? `Sorting… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`
                 : "Sorting…"
               : exceedsQuota
-              ? `Too many — ${(parsed.domains.length - quota.remaining).toLocaleString()} over your limit`
-              : `Sort ${parsed.domains.length.toLocaleString()} domain${parsed.domains.length === 1 ? "" : "s"}`}
+                ? `Too many — ${(parsed.domains.length - quota.remaining).toLocaleString()} over your limit`
+                : `Sort ${parsed.domains.length.toLocaleString()} domain${parsed.domains.length === 1 ? "" : "s"}`}
           </button>
 
           {progress && (
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-fg/10">
-              <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+              <div
+                className="h-full rounded-full bg-brand-500 transition-all"
+                style={{ width: `${(progress.done / progress.total) * 100}%` }}
+              />
             </div>
           )}
 
-          {error && <p className="mt-3 text-sm text-red-300 light:text-red-600">{error}</p>}
+          {error && (
+            <p className="mt-3 text-sm text-red-300 light:text-red-600">
+              {error}
+            </p>
+          )}
 
           {sortSummary && !busy && !error && (
             <p className="animate-fade-up mt-3 text-sm text-emerald-300 light:text-emerald-700">
               ✓ Sorted {sortSummary.count.toLocaleString()} domain
-              {sortSummary.count === 1 ? "" : "s"} in {(sortSummary.ms / 1000).toFixed(1)}s
+              {sortSummary.count === 1 ? "" : "s"} in{" "}
+              {(sortSummary.ms / 1000).toFixed(1)}s
             </p>
           )}
 
           <div className="mt-4 flex items-center justify-between text-xs text-fg/40">
             <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>
               {liveUsed.toLocaleString()} / {quota.limit.toLocaleString()} used
-              {quota.resetAt && <> · resets in {formatCountdown(quota.resetAt)}</>}
+              {quota.resetAt && (
+                <> · resets in {formatCountdown(quota.resetAt)}</>
+              )}
             </span>
-            <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>{liveRemaining.toLocaleString()} left · 20k / 6h</span>
+            <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>
+              {liveRemaining.toLocaleString()} left · 20k / 6h
+            </span>
           </div>
 
           {(results.length > 0 || history.length > 0 || text) && (
@@ -962,18 +1094,31 @@ export default function Sorter() {
         <div className="rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-fg/60">
-              {dimLabel} {sortedCount > 0 && `· ${sortedCount.toLocaleString()}`}
+              {dimLabel}{" "}
+              {sortedCount > 0 && `· ${sortedCount.toLocaleString()}`}
             </h2>
             {results.length > 0 && (
               <div className="flex items-center gap-3">
                 <span className="text-[10px] uppercase text-fg/30">Export</span>
-                <button onClick={exportEmailsAll} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="Just the email addresses, one per line">
+                <button
+                  onClick={exportEmailsAll}
+                  className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80"
+                  title="Just the email addresses, one per line"
+                >
                   Emails
                 </button>
-                <button onClick={exportAll} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="CSV table with the columns you pick below">
+                <button
+                  onClick={exportAll}
+                  className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80"
+                  title="CSV table with the columns you pick below"
+                >
                   CSV
                 </button>
-                <button onClick={exportXlsx} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="Excel workbook: Summary + Results (selected columns)">
+                <button
+                  onClick={exportXlsx}
+                  className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80"
+                  title="Excel workbook: Summary + Results (selected columns)"
+                >
                   XLSX
                 </button>
                 <button
@@ -991,22 +1136,46 @@ export default function Sorter() {
           {results.length > 0 && showExportCols && (
             <div className="mb-4 rounded-xl border border-fg/10 bg-fg/[0.02] p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[11px] uppercase text-fg/40">Columns for CSV / XLSX</span>
+                <span className="text-[11px] uppercase text-fg/40">
+                  Columns for CSV / XLSX
+                </span>
                 <div className="flex gap-2 text-[11px]">
-                  <button onClick={() => setExportCols(EXPORT_COLUMNS.map((c) => c.key))} className="text-brand-400 light:text-brand-600 hover:text-brand-400/80">All</button>
-                  <button onClick={() => setExportCols(["input"])} className="text-brand-400 light:text-brand-600 hover:text-brand-400/80">Email only</button>
-                  <button onClick={() => setExportCols(DEFAULT_EXPORT_COLS)} className="text-fg/40 hover:text-fg/70">Reset</button>
+                  <button
+                    onClick={() =>
+                      setExportCols(EXPORT_COLUMNS.map((c) => c.key))
+                    }
+                    className="text-brand-400 light:text-brand-600 hover:text-brand-400/80"
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setExportCols(["input"])}
+                    className="text-brand-400 light:text-brand-600 hover:text-brand-400/80"
+                  >
+                    Email only
+                  </button>
+                  <button
+                    onClick={() => setExportCols(DEFAULT_EXPORT_COLS)}
+                    className="text-fg/40 hover:text-fg/70"
+                  >
+                    Reset
+                  </button>
                 </div>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                 {EXPORT_COLUMNS.map((c) => (
-                  <label key={c.key} className="flex cursor-pointer items-center gap-1.5 text-xs text-fg/70">
+                  <label
+                    key={c.key}
+                    className="flex cursor-pointer items-center gap-1.5 text-xs text-fg/70"
+                  >
                     <input
                       type="checkbox"
                       checked={exportCols.includes(c.key)}
                       onChange={(e) =>
                         setExportCols((prev) =>
-                          e.target.checked ? [...prev, c.key] : prev.filter((k) => k !== c.key)
+                          e.target.checked
+                            ? [...prev, c.key]
+                            : prev.filter((k) => k !== c.key),
                         )
                       }
                       className="h-3.5 w-3.5 accent-brand-500"
@@ -1025,7 +1194,9 @@ export default function Sorter() {
                 key={d}
                 onClick={() => switchDimension(d)}
                 className={`rounded-md px-3 py-1.5 font-medium transition ${
-                  dimension === d ? "bg-brand-500 text-white" : "text-fg/50 hover:text-fg/80"
+                  dimension === d
+                    ? "bg-brand-500 text-white"
+                    : "text-fg/50 hover:text-fg/80"
                 }`}
               >
                 {d === "provider" ? "Mail provider" : "Registrar"}
@@ -1036,7 +1207,8 @@ export default function Sorter() {
           {results.length === 0 ? (
             <div className="flex h-48 flex-col items-center justify-center text-center text-sm text-fg/30">
               <div className="mb-2 text-3xl">🗂️</div>
-              Sorted {dimLabel.toLowerCase()} will appear here, each in its own bucket.
+              Sorted {dimLabel.toLowerCase()} will appear here, each in its own
+              bucket.
             </div>
           ) : dimension === "registrar" && regBusy && buckets.length === 0 ? (
             <div className="flex h-48 flex-col items-center justify-center text-center text-sm text-fg/40">
@@ -1044,7 +1216,8 @@ export default function Sorter() {
               Looking up registrars via RDAP…
               {regProgress && (
                 <span className="mt-1 text-xs text-fg/30">
-                  {regProgress.done.toLocaleString()} / {regProgress.total.toLocaleString()}
+                  {regProgress.done.toLocaleString()} /{" "}
+                  {regProgress.total.toLocaleString()}
                 </span>
               )}
             </div>
@@ -1052,7 +1225,8 @@ export default function Sorter() {
             <>
               {dimension === "registrar" && regBusy && regProgress && (
                 <div className="mb-3 text-xs text-fg/40">
-                  Loading registrars… {regProgress.done.toLocaleString()} / {regProgress.total.toLocaleString()}
+                  Loading registrars… {regProgress.done.toLocaleString()} /{" "}
+                  {regProgress.total.toLocaleString()}
                 </div>
               )}
               {buckets.length > 6 && (
@@ -1082,12 +1256,17 @@ export default function Sorter() {
               {/* Select-all + format + bulk download bar */}
               {visibleBuckets.length > 0 && (
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-fg/50">
-                  <label className="flex cursor-pointer items-center gap-1.5" title="Select every bucket">
+                  <label
+                    className="flex cursor-pointer items-center gap-1.5"
+                    title="Select every bucket"
+                  >
                     <input
                       type="checkbox"
                       checked={allVisibleSelected}
                       ref={(el) => {
-                        if (el) el.indeterminate = selectedVisibleCount > 0 && !allVisibleSelected;
+                        if (el)
+                          el.indeterminate =
+                            selectedVisibleCount > 0 && !allVisibleSelected;
                       }}
                       onChange={toggleSelectAll}
                       className="h-3.5 w-3.5 accent-brand-500"
@@ -1096,13 +1275,18 @@ export default function Sorter() {
                   </label>
 
                   {/* Download format */}
-                  <div className="inline-flex overflow-hidden rounded-md border border-fg/10" title="Format for bucket downloads">
+                  <div
+                    className="inline-flex overflow-hidden rounded-md border border-fg/10"
+                    title="Format for bucket downloads"
+                  >
                     {(["csv", "txt", "xlsx"] as const).map((f) => (
                       <button
                         key={f}
                         onClick={() => setDlFormat(f)}
                         className={`px-1.5 py-0.5 text-[10px] uppercase transition ${
-                          dlFormat === f ? "bg-brand-500 text-white" : "text-fg/40 hover:text-fg/70"
+                          dlFormat === f
+                            ? "bg-brand-500 text-white"
+                            : "text-fg/40 hover:text-fg/70"
                         }`}
                       >
                         {f}
@@ -1111,7 +1295,11 @@ export default function Sorter() {
                   </div>
 
                   <button
-                    onClick={() => downloadBuckets(visibleBuckets.filter((b) => selectedBuckets.has(b.id)))}
+                    onClick={() =>
+                      downloadBuckets(
+                        visibleBuckets.filter((b) => selectedBuckets.has(b.id)),
+                      )
+                    }
                     disabled={selectedVisibleCount === 0 || zipping}
                     className="ml-auto rounded-md bg-brand-500/90 px-2.5 py-1 font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-fg/10 disabled:text-fg/30"
                   >
@@ -1124,10 +1312,14 @@ export default function Sorter() {
 
               <div className="scroll-slim max-h-[400px] space-y-2 overflow-y-auto pr-1">
                 {visibleBuckets.length === 0 && (
-                  <p className="py-4 text-center text-xs text-fg/30">No {dimLabel.toLowerCase()} match “{bucketFilter}”.</p>
+                  <p className="py-4 text-center text-xs text-fg/30">
+                    No {dimLabel.toLowerCase()} match “{bucketFilter}”.
+                  </p>
                 )}
                 {visibleBuckets.map((b) => {
-                  const pct = sortedCount ? Math.round((b.domains.length / sortedCount) * 100) : 0;
+                  const pct = sortedCount
+                    ? Math.round((b.domains.length / sortedCount) * 100)
+                    : 0;
                   const isSel = selectedBuckets.has(b.id);
                   return (
                     <div
@@ -1136,8 +1328,8 @@ export default function Sorter() {
                         activeBucket === b.id
                           ? "border-brand-400/60 bg-brand-500/10"
                           : isSel
-                          ? "border-brand-400/30 bg-brand-500/[0.06]"
-                          : "border-fg/10 bg-fg/[0.03] hover:bg-fg/[0.06]"
+                            ? "border-brand-400/30 bg-brand-500/[0.06]"
+                            : "border-fg/10 bg-fg/[0.03] hover:bg-fg/[0.06]"
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -1149,15 +1341,24 @@ export default function Sorter() {
                           title="Select for multi-download"
                         />
                         <button
-                          onClick={() => setActiveBucket(activeBucket === b.id ? null : b.id)}
+                          onClick={() =>
+                            setActiveBucket(activeBucket === b.id ? null : b.id)
+                          }
                           className="flex min-w-0 flex-1 items-center gap-2 text-left"
                         >
-                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
-                          <span className="truncate text-sm font-medium text-fg/90">{b.label}</span>
+                          <span
+                            className="h-3 w-3 shrink-0 rounded-full"
+                            style={{ backgroundColor: b.color }}
+                          />
+                          <span className="truncate text-sm font-medium text-fg/90">
+                            {b.label}
+                          </span>
                           <span className="ml-auto text-sm font-semibold text-fg/90">
                             {b.domains.length.toLocaleString()}
                           </span>
-                          <span className="w-10 text-right text-xs text-fg/40">{pct}%</span>
+                          <span className="w-10 text-right text-xs text-fg/40">
+                            {pct}%
+                          </span>
                         </button>
                         <button
                           onClick={() => downloadBuckets([b])}
@@ -1169,7 +1370,10 @@ export default function Sorter() {
                         </button>
                       </div>
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-fg/10">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: b.color }} />
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, backgroundColor: b.color }}
+                        />
                       </div>
                     </div>
                   );
@@ -1183,20 +1387,59 @@ export default function Sorter() {
       {/* Insights */}
       {insights && (
         <div className="animate-fade-up rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
-          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-fg/60">Insights</h2>
+          <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-fg/60">
+            Insights
+          </h2>
           <div className="grid gap-5 lg:grid-cols-[auto_1fr]">
-            <DistributionDonut buckets={buckets} total={sortedCount} label={dimLabel} />
+            <DistributionDonut
+              buckets={buckets}
+              total={sortedCount}
+              label={dimLabel}
+            />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-              <Stat label="Unique domains" value={insights.unique.toLocaleString()} sub={`${insights.dedupPct}% dedup from ${insights.inputTokens.toLocaleString()}`} />
-              <Stat label={dimLabel} value={insights.providerCount.toLocaleString()} sub="distinct buckets" />
-              <Stat label="Top provider" value={insights.top ? `${insights.topPct}%` : "—"} sub={insights.top?.label ?? ""} accent={insights.top?.color} />
-              <Stat label="Matched" value={`${insights.matchedPct}%`} sub={`${insights.mx.toLocaleString()} MX · ${insights.ns.toLocaleString()} NS`} />
-              <Stat label="Google + MS" value={`${insights.bigThreePct}%`} sub="on the big two" />
-              <Stat label="No mail" value={insights.noMail.toLocaleString()} sub="no MX record" />
+              <Stat
+                label="Unique domains"
+                value={insights.unique.toLocaleString()}
+                sub={`${insights.dedupPct}% dedup from ${insights.inputTokens.toLocaleString()}`}
+              />
+              <Stat
+                label={dimLabel}
+                value={insights.providerCount.toLocaleString()}
+                sub="distinct buckets"
+              />
+              <Stat
+                label="Top provider"
+                value={insights.top ? `${insights.topPct}%` : "—"}
+                sub={insights.top?.label ?? ""}
+                accent={insights.top?.color}
+              />
+              <Stat
+                label="Matched"
+                value={`${insights.matchedPct}%`}
+                sub={`${insights.mx.toLocaleString()} MX · ${insights.ns.toLocaleString()} NS`}
+              />
+              <Stat
+                label="Google + MS"
+                value={`${insights.bigThreePct}%`}
+                sub="on the big two"
+              />
+              <Stat
+                label="No mail"
+                value={insights.noMail.toLocaleString()}
+                sub="no MX record"
+              />
               {insights.delivChecked > 0 && (
                 <>
-                  <Stat label="Has SPF" value={`${insights.spfPct}%`} sub={`of ${insights.delivChecked.toLocaleString()} checked`} />
-                  <Stat label="Has DMARC" value={`${insights.dmarcPct}%`} sub={`of ${insights.delivChecked.toLocaleString()} checked`} />
+                  <Stat
+                    label="Has SPF"
+                    value={`${insights.spfPct}%`}
+                    sub={`of ${insights.delivChecked.toLocaleString()} checked`}
+                  />
+                  <Stat
+                    label="Has DMARC"
+                    value={`${insights.dmarcPct}%`}
+                    sub={`of ${insights.delivChecked.toLocaleString()} checked`}
+                  />
                 </>
               )}
             </div>
@@ -1206,25 +1449,46 @@ export default function Sorter() {
 
       {/* Drill-down for a selected bucket */}
       {shown && (
-        <div ref={drilldownRef} className="animate-fade-up rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
+        <div
+          ref={drilldownRef}
+          className="animate-fade-up rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5"
+        >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-fg/90">
-              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: shown.color }} />
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ backgroundColor: shown.color }}
+              />
               {shown.label} · {shown.domains.length.toLocaleString()}
             </h3>
             <div className="flex flex-wrap items-center gap-3">
               {["__other_mail__", "__self_hosted__"].includes(shown.id) && (
-                <button onClick={() => suggestFixFor(shown)} className="text-xs text-amber-300 light:text-amber-700 hover:text-amber-200 light:text-amber-800" title="Tell us which provider these belong to">
+                <button
+                  onClick={() => suggestFixFor(shown)}
+                  className="text-xs text-amber-300 light:text-amber-700 hover:text-amber-200 light:text-amber-800"
+                  title="Tell us which provider these belong to"
+                >
                   💡 Suggest a fix
                 </button>
               )}
-              <button onClick={() => copyBucketDomains(shown)} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80">
+              <button
+                onClick={() => copyBucketDomains(shown)}
+                className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80"
+              >
                 {copiedId === shown.id ? "✓ Copied" : "⧉ Copy emails"}
               </button>
-              <button onClick={() => exportBucketEmails(shown)} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="Just the emails, one per line">
+              <button
+                onClick={() => exportBucketEmails(shown)}
+                className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80"
+                title="Just the emails, one per line"
+              >
                 ⬇ Emails
               </button>
-              <button onClick={() => exportBucket(shown)} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80" title="Full table for this bucket">
+              <button
+                onClick={() => exportBucket(shown)}
+                className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80"
+                title="Full table for this bucket"
+              >
                 ⬇ CSV
               </button>
             </div>
@@ -1238,7 +1502,9 @@ export default function Sorter() {
                   <th className="px-3 py-2 font-medium">Domain</th>
                   <th className="px-3 py-2 font-medium">Mail provider</th>
                   <th className="px-3 py-2 font-medium">Registrar</th>
-                  {deliverability && <th className="px-3 py-2 font-medium">SPF · DMARC</th>}
+                  {deliverability && (
+                    <th className="px-3 py-2 font-medium">SPF · DMARC</th>
+                  )}
                   <th className="px-3 py-2 font-medium">Why it matched</th>
                 </tr>
               </thead>
@@ -1251,37 +1517,68 @@ export default function Sorter() {
                     conf === "high"
                       ? "bg-emerald-500/15 text-emerald-300 light:text-emerald-700"
                       : conf === "medium"
-                      ? "bg-amber-500/15 text-amber-300 light:text-amber-700"
-                      : "bg-fg/10 text-fg/40";
+                        ? "bg-amber-500/15 text-amber-300 light:text-amber-700"
+                        : "bg-fg/10 text-fg/40";
                   // One row per original input — show the full email, never truncated.
                   return originalsFor(domain).map((input, idx) => (
-                    <tr key={domain + ":" + idx} className="border-t border-fg/5">
+                    <tr
+                      key={domain + ":" + idx}
+                      className="border-t border-fg/5"
+                    >
                       <td className="px-3 py-2 text-fg/90">{input}</td>
                       <td className="px-3 py-2 text-fg/40">{domain}</td>
-                      <td className="px-3 py-2 text-fg/60">{r?.provider ?? "—"}</td>
-                      <td className="px-3 py-2 text-fg/60">{reg?.registrar ?? "—"}</td>
+                      <td className="px-3 py-2 text-fg/60">
+                        {r?.provider ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-fg/60">
+                        {reg?.registrar ?? "—"}
+                      </td>
                       {deliverability && (
                         <td className="px-3 py-2 text-xs">
-                          <span className={r?.hasSpf ? "text-emerald-300 light:text-emerald-700" : "text-fg/30"}>SPF {r?.hasSpf ? "✓" : "✗"}</span>
+                          <span
+                            className={
+                              r?.hasSpf
+                                ? "text-emerald-300 light:text-emerald-700"
+                                : "text-fg/30"
+                            }
+                          >
+                            SPF {r?.hasSpf ? "✓" : "✗"}
+                          </span>
                           <span className="mx-1 text-fg/20">·</span>
-                          <span className={r?.hasDmarc ? "text-emerald-300 light:text-emerald-700" : "text-fg/30"}>DMARC {r?.hasDmarc ? "✓" : "✗"}</span>
+                          <span
+                            className={
+                              r?.hasDmarc
+                                ? "text-emerald-300 light:text-emerald-700"
+                                : "text-fg/30"
+                            }
+                          >
+                            DMARC {r?.hasDmarc ? "✓" : "✗"}
+                          </span>
                         </td>
                       )}
                       <td className="px-3 py-2 text-xs">
                         {r?.matchedPattern ? (
                           <span className="flex flex-wrap items-center gap-1.5">
-                            <span className={`rounded px-1.5 py-0.5 uppercase ${confColor}`}>{conf}</span>
+                            <span
+                              className={`rounded px-1.5 py-0.5 uppercase ${confColor}`}
+                            >
+                              {conf}
+                            </span>
                             <span className="text-fg/50">
                               {r.matchedBy} contains
                               <code className="ml-1 rounded bg-fg/10 px-1 text-fg/70">
                                 {r.matchedPattern}
                               </code>
                             </span>
-                            {r.evidence && <span className="text-fg/30">({r.evidence})</span>}
+                            {r.evidence && (
+                              <span className="text-fg/30">({r.evidence})</span>
+                            )}
                           </span>
                         ) : (
                           <span className="text-fg/30">
-                            {(r?.matchedBy === "ns" ? r?.ns : r?.mx)?.slice(0, 1).join(", ") || "no records"}
+                            {(r?.matchedBy === "ns" ? r?.ns : r?.mx)
+                              ?.slice(0, 1)
+                              .join(", ") || "no records"}
                           </span>
                         )}
                       </td>
@@ -1295,12 +1592,17 @@ export default function Sorter() {
       )}
 
       {/* Suggest a missing mail host */}
-      <div id="suggest-box" className="rounded-2xl border border-fg/10 bg-ink-800/40 p-4 backdrop-blur sm:p-5">
+      <div
+        id="suggest-box"
+        className="rounded-2xl border border-fg/10 bg-ink-800/40 p-4 backdrop-blur sm:p-5"
+      >
         <button
           onClick={() => setSuggestOpen((s) => !s)}
           className="flex w-full items-center justify-between text-left text-sm font-medium text-fg/70 hover:text-fg/90"
         >
-          <span>💡 Missing a provider? Suggest a mail host (MX / NS) to add</span>
+          <span>
+            💡 Missing a provider? Suggest a mail host (MX / NS) to add
+          </span>
           <span className="text-fg/40">{suggestOpen ? "▾" : "▸"}</span>
         </button>
         {suggestOpen && (
@@ -1308,7 +1610,8 @@ export default function Sorter() {
             <p className="text-xs text-fg/40">
               Tell us a domain, MX host, or NS host we should recognize (e.g.{" "}
               <code className="rounded bg-fg/10 px-1">acme-mail.com</code> or{" "}
-              <code className="rounded bg-fg/10 px-1">mx1.somehost.net</code>). We&rsquo;ll review and add it.
+              <code className="rounded bg-fg/10 px-1">mx1.somehost.net</code>).
+              We&rsquo;ll review and add it.
             </p>
             <input
               value={suggestValue}
@@ -1330,7 +1633,9 @@ export default function Sorter() {
               >
                 {suggestSending ? "Sending…" : "Submit suggestion"}
               </button>
-              {suggestMsg && <span className="text-xs text-fg/60">{suggestMsg}</span>}
+              {suggestMsg && (
+                <span className="text-xs text-fg/60">{suggestMsg}</span>
+              )}
             </div>
           </div>
         )}
@@ -1358,16 +1663,35 @@ function DistributionDonut({
   const top = buckets.slice(0, 6);
   const otherCount = buckets.slice(6).reduce((n, b) => n + b.domains.length, 0);
   const segments = [
-    ...top.map((b) => ({ label: b.label, value: b.domains.length, color: b.color })),
-    ...(otherCount ? [{ label: "Other", value: otherCount, color: "#5a5a72" }] : []),
+    ...top.map((b) => ({
+      label: b.label,
+      value: b.domains.length,
+      color: b.color,
+    })),
+    ...(otherCount
+      ? [{ label: "Other", value: otherCount, color: "#5a5a72" }]
+      : []),
   ];
 
   let offset = 0;
   return (
     <div className="flex items-center gap-4">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${label} distribution`}>
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        role="img"
+        aria-label={`${label} distribution`}
+      >
         <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" className="stroke-fg/[0.08]" strokeWidth={stroke} />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            className="stroke-fg/[0.08]"
+            strokeWidth={stroke}
+          />
           {segments.map((s, i) => {
             const dash = (s.value / safeTotal) * circ;
             const el = (
@@ -1387,19 +1711,36 @@ function DistributionDonut({
             return el;
           })}
         </g>
-        <text x="50%" y="47%" textAnchor="middle" className="fill-fg/90" style={{ fontSize: 22, fontWeight: 700 }}>
+        <text
+          x="50%"
+          y="47%"
+          textAnchor="middle"
+          className="fill-fg/90"
+          style={{ fontSize: 22, fontWeight: 700 }}
+        >
           {total.toLocaleString()}
         </text>
-        <text x="50%" y="60%" textAnchor="middle" className="fill-fg/40" style={{ fontSize: 9 }}>
+        <text
+          x="50%"
+          y="60%"
+          textAnchor="middle"
+          className="fill-fg/40"
+          style={{ fontSize: 9 }}
+        >
           domains
         </text>
       </svg>
       <div className="space-y-1">
         {segments.map((s, i) => (
           <div key={i} className="flex items-center gap-1.5 text-xs text-fg/60">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: s.color }} />
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-sm"
+              style={{ backgroundColor: s.color }}
+            />
             <span className="max-w-[140px] truncate">{s.label}</span>
-            <span className="ml-auto text-fg/40">{Math.round((s.value / safeTotal) * 100)}%</span>
+            <span className="ml-auto text-fg/40">
+              {Math.round((s.value / safeTotal) * 100)}%
+            </span>
           </div>
         ))}
       </div>
@@ -1420,12 +1761,21 @@ function Stat({
 }) {
   return (
     <div className="rounded-xl border border-fg/10 bg-fg/[0.02] p-3">
-      <div className="text-[11px] uppercase tracking-wide text-fg/40">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-fg/40">
+        {label}
+      </div>
       <div className="mt-1 flex items-center gap-1.5 text-xl font-bold text-fg/90">
-        {accent && <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: accent }} />}
+        {accent && (
+          <span
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: accent }}
+          />
+        )}
         {value}
       </div>
-      {sub && <div className="mt-0.5 truncate text-[11px] text-fg/40">{sub}</div>}
+      {sub && (
+        <div className="mt-0.5 truncate text-[11px] text-fg/40">{sub}</div>
+      )}
     </div>
   );
 }

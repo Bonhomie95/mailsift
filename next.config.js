@@ -6,6 +6,11 @@ const nextConfig = {
   experimental: {
     // Required in Next 14 for src/instrumentation.ts (Sentry server init).
     instrumentationHook: true,
+    // Ship the offline IP→country table with the serverless function that reads
+    // it (src/lib/ipCountry.ts). Harmless if the asset hasn't been built yet.
+    outputFileTracingIncludes: {
+      "/api/country": ["./src/data/ip-country.v4.bin"],
+    },
   },
 };
 
