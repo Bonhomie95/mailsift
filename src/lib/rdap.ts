@@ -19,7 +19,7 @@ interface CacheEntry {
 
 const CACHE = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
-const CACHE_MAX = 50_000;
+const CACHE_MAX = 750_000;
 
 // --- IANA bootstrap: TLD -> authoritative RDAP base URL ---
 let bootstrapPromise: Promise<Map<string, string>> | null = null;

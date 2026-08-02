@@ -32,8 +32,8 @@ interface CacheEntry {
 }
 
 const CACHE = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 1000 * 60 * 60 * 6; // 6 hours
-const CACHE_MAX = 50_000;
+const CACHE_TTL_MS = 1000 * 60 * 60 * 1; // 6 hours
+const CACHE_MAX = 750_000;
 
 const DOH_ENDPOINTS = [
   "https://cloudflare-dns.com/dns-query",

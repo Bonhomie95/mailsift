@@ -23,7 +23,7 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-3 text-sm">
           <span className="hidden rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-300 light:text-emerald-700 sm:inline">
-            Free · 50k / 3 hours
+            Free · 750k / 1 hour
           </span>
           <ThemeToggle />
         </div>
@@ -57,7 +57,7 @@ export default function Home() {
       </div>
 
       <footer className="mt-16 border-t border-fg/10 pt-6 text-center text-xs text-fg/30">
-        MailSift · Free tier: 50,000 domains per rolling 3 hours per tool, one tab at a time. Paid plans coming soon.
+        MailSift · Free tier: 750,000 domains per rolling 1 hour per tool, one tab at a time. Paid plans coming soon.
       </footer>
 
       {/* Popunder, capped to once / 30 min */}

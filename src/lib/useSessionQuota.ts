@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export const FREE_SESSION_LIMIT = 50_000;
-export const QUOTA_WINDOW_MS = 3 * 60 * 60 * 1000; // 3 hours
+export const FREE_SESSION_LIMIT = 750_000;
+export const QUOTA_WINDOW_MS = 1 * 60 * 60 * 1000; // 3 hours
 /** Short label for the tier, shown in the UI (keep in sync with the two above). */
 export const QUOTA_LABEL = "50k / 3h";
 
