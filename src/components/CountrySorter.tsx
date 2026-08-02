@@ -577,7 +577,7 @@ export default function CountrySorter() {
               {liveUsed.toLocaleString()} / {quota.limit.toLocaleString()} used
               {quota.resetAt && <> · resets in {formatCountdown(quota.resetAt)}</>}
             </span>
-            <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>{liveRemaining.toLocaleString()} left · 50k / 3h</span>
+            <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>{liveRemaining.toLocaleString()} left · 750k / 1h</span>
           </div>
 
           {(results.length > 0 || text) && (

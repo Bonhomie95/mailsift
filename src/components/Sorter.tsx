@@ -1075,7 +1075,7 @@ export default function Sorter() {
               )}
             </span>
             <span className={busy ? "text-brand-400 light:text-brand-600" : ""}>
-              {liveRemaining.toLocaleString()} left · 50k / 3h
+              {liveRemaining.toLocaleString()} left · 750k / 1h
             </span>
           </div>
 
