@@ -63,6 +63,10 @@ const CHUNK = 1000; // domains per streaming request (keeps each under the timeo
 const REG_CHUNK = 250;
 const HISTORY_KEY = "mailsift-history";
 const HISTORY_MAX = 8;
+// Cap the drill-down table: rendering every row of a huge bucket (a list can
+// hold up to FREE_SESSION_LIMIT domains) builds hundreds of thousands of DOM
+// nodes at once and OOMs Firefox. Exports still include everything.
+const DRILL_MAX = 2000;
 
 // Columns the user can include when exporting a full table (CSV/XLSX).
 const EXPORT_COLUMNS: { key: string; label: string }[] = [
@@ -822,6 +826,25 @@ export default function Sorter() {
     : null;
   const dimLabel = dimension === "provider" ? "Providers" : "Registrars";
 
+  // Flatten the shown bucket to one row per original input, but stop building
+  // rows at DRILL_MAX so a giant bucket can't OOM the tab. `total` is the true
+  // row count (used for the "showing first N" notice and the export hint).
+  const drill = useMemo(() => {
+    if (!shown) return null;
+    const rows: { domain: string; input: string; idx: number }[] = [];
+    let total = 0;
+    for (const domain of shown.domains) {
+      const originals = originalsFor(domain);
+      total += originals.length;
+      for (let idx = 0; idx < originals.length; idx++) {
+        if (rows.length < DRILL_MAX)
+          rows.push({ domain, input: originals[idx], idx });
+      }
+    }
+    return { rows, total, capped: total > DRILL_MAX };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, parsed.originals]);
+
   // Live quota: while sorting, count down as domains resolve (committed at the end).
   const liveDone = busy && progress ? progress.done : 0;
   const liveUsed = Math.min(quota.limit, quota.used + liveDone);
@@ -1509,7 +1532,7 @@ export default function Sorter() {
                 </tr>
               </thead>
               <tbody>
-                {shown.domains.flatMap((domain) => {
+                {drill?.rows.map(({ domain, input, idx }) => {
                   const r = resultByDomain[domain];
                   const reg = regByDomain[domain];
                   const conf = r?.confidence ?? "none";
@@ -1520,7 +1543,7 @@ export default function Sorter() {
                         ? "bg-amber-500/15 text-amber-300 light:text-amber-700"
                         : "bg-fg/10 text-fg/40";
                   // One row per original input — show the full email, never truncated.
-                  return originalsFor(domain).map((input, idx) => (
+                  return (
                     <tr
                       key={domain + ":" + idx}
                       className="border-t border-fg/5"
@@ -1583,11 +1606,24 @@ export default function Sorter() {
                         )}
                       </td>
                     </tr>
-                  ));
+                  );
                 })}
               </tbody>
             </table>
           </div>
+          {drill?.capped && (
+            <p className="mt-2 text-xs text-fg/40">
+              Showing the first {DRILL_MAX.toLocaleString()} of{" "}
+              {drill.total.toLocaleString()} rows. Use{" "}
+              <button
+                onClick={() => exportBucket(shown)}
+                className="text-brand-400 light:text-brand-600 underline hover:text-brand-400/80"
+              >
+                ⬇ CSV
+              </button>{" "}
+              or ⧉ Copy emails above to get them all.
+            </p>
+          )}
         </div>
       )}
 
