@@ -1,25 +1,40 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   SEPARATORS,
   separatorChar,
-  formatCredentials,
   type SeparatorId,
+  type FormatOptions,
+  type FormatStats,
 } from "@/lib/credentials";
-import {
-  readFileToText,
-  downloadText,
-  downloadCsv,
-  fileStamp,
-} from "@/lib/exportUtils";
+import { readFileToText, downloadBlob, fileStamp } from "@/lib/exportUtils";
+
+interface ConvertResult {
+  preview: string;
+  previewShown: number;
+  stats: FormatStats;
+}
+
+type WorkerMsg =
+  | { kind: "progress"; read: number; total: number; parsed: number }
+  | { kind: "result"; preview: string; previewShown: number; stats: FormatStats; txtBlob: Blob }
+  | { kind: "blob"; blob: Blob; format: "txt" | "csv" }
+  | { kind: "error"; message: string };
+
+const isSpreadsheet = (name: string) => /\.(xlsx|xls|xlsm|ods)$/i.test(name);
+
+function humanSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default function CredentialSorter() {
+  const [source, setSource] = useState<"paste" | "file">("paste");
   const [text, setText] = useState("");
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const [sepId, setSepId] = useState<SeparatorId>("colon");
   const [customSep, setCustomSep] = useState("");
@@ -28,39 +43,122 @@ export default function CredentialSorter() {
   const [sortByEmail, setSortByEmail] = useState(false);
   const [keepPasswordless, setKeepPasswordless] = useState(false);
 
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ read: number; total: number; parsed: number } | null>(null);
+  const [result, setResult] = useState<ConvertResult | null>(null);
+  const [stale, setStale] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
   const fileRef = useRef<HTMLInputElement>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const txtBlobRef = useRef<Blob | null>(null);
+  // What the worker currently holds parsed — the File or the text string — so a
+  // separator/option tweak can "reformat" instantly instead of re-reading.
+  const loadedRef = useRef<File | string | null>(null);
 
   const separator = separatorChar(sepId, customSep);
 
-  const result = useMemo(
-    () =>
-      formatCredentials(text, {
-        separator,
-        lowercaseEmail,
-        dedupe,
-        sortByEmail,
-        keepPasswordless,
-      }),
-    [text, separator, lowercaseEmail, dedupe, sortByEmail, keepPasswordless]
-  );
+  function buildOptions(): FormatOptions {
+    return { separator, lowercaseEmail, dedupe, sortByEmail, keepPasswordless };
+  }
 
-  const output = result.lines.join("\n");
+  function getWorker(): Worker {
+    if (!workerRef.current) {
+      const w = new Worker(new URL("../workers/credentials.worker.ts", import.meta.url));
+      w.onmessage = (e: MessageEvent<WorkerMsg>) => {
+        const m = e.data;
+        if (m.kind === "progress") {
+          setProgress({ read: m.read, total: m.total, parsed: m.parsed });
+        } else if (m.kind === "result") {
+          txtBlobRef.current = m.txtBlob;
+          setResult({ preview: m.preview, previewShown: m.previewShown, stats: m.stats });
+          setBusy(false);
+          setProgress(null);
+        } else if (m.kind === "blob") {
+          downloadBlob(`mailsift-logins_${fileStamp()}.${m.format}`, m.blob);
+        } else if (m.kind === "error") {
+          setError(m.message);
+          setBusy(false);
+          setProgress(null);
+        }
+      };
+      workerRef.current = w;
+    }
+    return workerRef.current;
+  }
 
-  async function handleFile(file: File) {
+  useEffect(() => () => workerRef.current?.terminate(), []);
+
+  // Mark the current output stale when the input or options change after a run,
+  // so the user knows to hit Convert again (nothing recomputes on its own).
+  useEffect(() => {
+    if (result) setStale(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, file, sepId, customSep, lowercaseEmail, dedupe, sortByEmail, keepPasswordless]);
+
+  function handleFile(f: File) {
     setError(null);
-    setFileName(file.name);
-    try {
-      const content = await readFileToText(file);
-      setText((prev) => (prev ? prev + "\n" + content : content));
-    } catch {
-      setError("Could not read that file. Try CSV, TXT, or XLSX.");
+    setSource("file");
+    setFile(f);
+    setResult(null);
+    setProgress(null);
+    setStale(false);
+    loadedRef.current = null;
+  }
+
+  function convert() {
+    setError(null);
+    setCopied(false);
+    const opts = buildOptions();
+    const w = getWorker();
+
+    if (source === "file") {
+      if (!file) return;
+      setBusy(true);
+      setStale(false);
+      if (loadedRef.current === file) {
+        w.postMessage({ kind: "reformat", options: opts });
+      } else if (isSpreadsheet(file.name)) {
+        // Spreadsheets can't be streamed — expand to text on the main thread,
+        // then hand the text to the worker for parsing/formatting.
+        setProgress(null);
+        readFileToText(file)
+          .then((txt) => {
+            loadedRef.current = file;
+            w.postMessage({ kind: "text", text: txt, options: opts });
+          })
+          .catch(() => {
+            setBusy(false);
+            setError("Could not read that file. Try CSV, TXT, or XLSX.");
+          });
+      } else {
+        loadedRef.current = file;
+        setProgress({ read: 0, total: file.size, parsed: 0 });
+        w.postMessage({ kind: "file", file, options: opts });
+      }
+      return;
+    }
+
+    // paste
+    if (!text.trim()) {
+      setError("Paste some logins first, or upload a file.");
+      return;
+    }
+    setBusy(true);
+    setStale(false);
+    if (loadedRef.current === text) {
+      w.postMessage({ kind: "reformat", options: opts });
+    } else {
+      loadedRef.current = text;
+      w.postMessage({ kind: "text", text, options: opts });
     }
   }
 
   async function copyOutput() {
-    if (!output) return;
+    if (!txtBlobRef.current) return;
     try {
-      await navigator.clipboard.writeText(output);
+      await navigator.clipboard.writeText(await txtBlobRef.current.text());
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -69,24 +167,38 @@ export default function CredentialSorter() {
   }
 
   function downloadTxt() {
-    if (!output) return;
-    downloadText(`mailsift-logins_${fileStamp()}.txt`, output);
+    if (txtBlobRef.current) downloadBlob(`mailsift-logins_${fileStamp()}.txt`, txtBlobRef.current);
   }
 
   function downloadCsvFile() {
-    if (!result.rows.length) return;
-    const rows: string[][] = [["email", "password"]];
-    for (const r of result.rows) rows.push([r.email, r.password]);
-    downloadCsv(`mailsift-logins_${fileStamp()}.csv`, rows);
+    if (!result) return;
+    getWorker().postMessage({ kind: "download", options: buildOptions(), format: "csv" });
   }
 
   function clearAll() {
     setText("");
-    setFileName(null);
+    setFile(null);
+    setSource("paste");
+    setResult(null);
+    setProgress(null);
+    setStale(false);
     setError(null);
+    loadedRef.current = null;
+    txtBlobRef.current = null;
   }
 
+  const stats = result?.stats ?? null;
   const sepPreviewLabel = sepId === "tab" ? "⇥ (tab)" : sepId === "space" ? "␣ (space)" : separator || "…";
+  const pct = progress && progress.total ? Math.min(100, Math.round((progress.read / progress.total) * 100)) : null;
+  const hasInput = source === "file" ? !!file : text.trim().length > 0;
+
+  const convertLabel = busy
+    ? pct !== null
+      ? `Reading… ${pct}%`
+      : "Converting…"
+    : stale
+    ? "↻ Re-convert"
+    : "Convert";
 
   return (
     <div className="space-y-6">
@@ -96,35 +208,74 @@ export default function CredentialSorter() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-fg/60">Your logins</h2>
             <span className="text-xs text-fg/40">
-              {result.total.toLocaleString()} row{result.total === 1 ? "" : "s"}
+              {source === "file" ? "from file" : "pasted"}
             </span>
           </div>
 
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              const f = e.dataTransfer.files?.[0];
-              if (f) handleFile(f);
-            }}
-            className={`relative rounded-xl border-2 border-dashed transition ${
-              dragOver ? "border-brand-400 bg-brand-500/10" : "border-fg/10"
-            }`}
-          >
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={
-                "Paste your logins in any format…\n\njohn@acme.com:hunter2\njane@acme.com, s3cret!\nmike@acme.com | pa:ss:word\nsupport@acme.com\tletmein"
-              }
-              className="h-56 w-full resize-none rounded-xl bg-transparent p-4 font-mono text-sm text-fg/90 outline-none placeholder:text-fg/25"
-            />
-          </div>
+          {source === "file" && file ? (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) handleFile(f);
+              }}
+              className={`flex h-56 flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 text-center transition ${
+                dragOver ? "border-brand-400 bg-brand-500/10" : "border-fg/10 bg-fg/[0.02]"
+              }`}
+            >
+              <div className="text-3xl">📄</div>
+              <div className="mt-2 max-w-full truncate text-sm font-medium text-fg/90">{file.name}</div>
+              <div className="mt-0.5 text-xs text-fg/40">{humanSize(file.size)}</div>
+              {busy && pct !== null ? (
+                <div className="mt-3 w-full max-w-xs">
+                  <div className="h-2 overflow-hidden rounded-full bg-fg/10">
+                    <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="mt-1.5 text-xs text-brand-400 light:text-brand-600">
+                    Reading {pct}% · {progress!.parsed.toLocaleString()} rows parsed
+                  </div>
+                </div>
+              ) : result ? (
+                <div className="mt-2 text-xs text-emerald-300 light:text-emerald-700">
+                  ✓ {stats!.total.toLocaleString()} rows read · click Convert to re-run
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-fg/40">Ready — big files stream in on Convert (kept off the main thread)</div>
+              )}
+            </div>
+          ) : (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) handleFile(f);
+              }}
+              className={`relative rounded-xl border-2 border-dashed transition ${
+                dragOver ? "border-brand-400 bg-brand-500/10" : "border-fg/10"
+              }`}
+            >
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={
+                  "Paste your logins in any format…\n\njohn@acme.com:hunter2\n1042, jane@acme.com, s3cret!, 2026-01-01\nhunter2 | mike@acme.com\nid=7;support@acme.com;letmein;10.0.0.4"
+                }
+                className="h-56 w-full resize-none rounded-xl bg-transparent p-4 font-mono text-sm text-fg/90 outline-none placeholder:text-fg/25"
+              />
+            </div>
+          )}
 
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
@@ -144,8 +295,7 @@ export default function CredentialSorter() {
                 e.target.value = "";
               }}
             />
-            {fileName && <span className="text-xs text-fg/40">Loaded: {fileName}</span>}
-            {text && (
+            {(text || file) && (
               <button onClick={clearAll} className="text-xs text-fg/40 hover:text-fg/70">
                 Clear
               </button>
@@ -160,7 +310,11 @@ export default function CredentialSorter() {
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[11px] uppercase tracking-wide text-fg/40">Output separator</span>
               <span className="text-xs text-fg/50">
-                email <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-brand-400 light:text-brand-600">{sepPreviewLabel}</span> password
+                email{" "}
+                <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-brand-400 light:text-brand-600">
+                  {sepPreviewLabel}
+                </span>{" "}
+                password
               </span>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -176,7 +330,9 @@ export default function CredentialSorter() {
                   }`}
                 >
                   {s.label}
-                  <span className="ml-1.5 text-fg/40">{s.id === "custom" ? "" : s.char === "\t" ? "⇥" : s.char === " " ? "␣" : s.char}</span>
+                  <span className="ml-1.5 text-fg/40">
+                    {s.id === "custom" ? "" : s.char === "\t" ? "⇥" : s.char === " " ? "␣" : s.char}
+                  </span>
                 </button>
               ))}
             </div>
@@ -197,15 +353,28 @@ export default function CredentialSorter() {
             <Toggle checked={lowercaseEmail} onChange={setLowercaseEmail} label="Lowercase emails" />
             <Toggle checked={keepPasswordless} onChange={setKeepPasswordless} label="Keep rows with no password" />
           </div>
+
+          <button
+            onClick={convert}
+            disabled={busy || !hasInput}
+            className="mt-4 w-full rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-3 font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-400 hover:to-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {convertLabel}
+          </button>
+          {stale && !busy && (
+            <p className="mt-2 text-center text-xs text-amber-300 light:text-amber-700">
+              Options changed — click to re-convert.
+            </p>
+          )}
         </div>
 
         {/* Output */}
         <div className="rounded-2xl border border-fg/10 bg-ink-800/60 p-4 backdrop-blur sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-fg/60">
-              Formatted {result.formatted > 0 && `· ${result.formatted.toLocaleString()}`}
+              Formatted {stats && stats.formatted > 0 && `· ${stats.formatted.toLocaleString()}`}
             </h2>
-            {result.formatted > 0 && (
+            {stats && stats.formatted > 0 && (
               <div className="flex items-center gap-3">
                 <button onClick={copyOutput} className="text-xs text-brand-400 light:text-brand-600 hover:text-brand-400/80">
                   {copied ? "✓ Copied" : "⧉ Copy"}
@@ -220,41 +389,59 @@ export default function CredentialSorter() {
             )}
           </div>
 
-          {result.formatted === 0 ? (
+          {!stats || stats.formatted === 0 ? (
             <div className="flex h-56 flex-col items-center justify-center text-center text-sm text-fg/30">
               <div className="mb-2 text-3xl">🔐</div>
-              Paste any email + password list on the left. It comes back here as clean
-              <br className="hidden sm:block" /> <code className="text-fg/50">email{sepPreviewLabel}password</code> rows.
+              {busy ? (
+                <span className="text-fg/50">Working…</span>
+              ) : (
+                <>
+                  Add logins on the left, pick a separator, then hit <strong className="text-fg/60">Convert</strong>.
+                  <br className="hidden sm:block" /> Output is only{" "}
+                  <code className="text-fg/50">email{sepPreviewLabel}password</code> — every other field is dropped.
+                </>
+              )}
             </div>
           ) : (
-            <textarea
-              readOnly
-              value={output}
-              onFocus={(e) => e.currentTarget.select()}
-              className="scroll-slim h-72 w-full resize-none rounded-xl border border-fg/10 bg-ink-900/60 p-4 font-mono text-sm text-fg/90 outline-none"
-            />
-          )}
+            <>
+              <textarea
+                readOnly
+                value={result!.preview}
+                onFocus={(e) => e.currentTarget.select()}
+                className="scroll-slim h-72 w-full resize-none rounded-xl border border-fg/10 bg-ink-900/60 p-4 font-mono text-sm text-fg/90 outline-none"
+              />
+              {result!.previewShown < stats.formatted && (
+                <p className="mt-2 text-xs text-fg/40">
+                  Showing the first {result!.previewShown.toLocaleString()} of{" "}
+                  {stats.formatted.toLocaleString()} rows — use Copy / TXT / CSV to get them all.
+                </p>
+              )}
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Stat label="Formatted" value={stats.formatted.toLocaleString()} tone="good" />
+                <Stat label="Duplicates" value={stats.duplicates.toLocaleString()} sub={dedupe ? "removed" : "kept"} />
+                <Stat label="No password" value={stats.noPassword.toLocaleString()} sub={keepPasswordless ? "kept" : "skipped"} />
+                <Stat
+                  label="No email"
+                  value={stats.noEmailCount.toLocaleString()}
+                  sub="skipped"
+                  tone={stats.noEmailCount ? "warn" : undefined}
+                />
+              </div>
 
-          {/* Report */}
-          {result.total > 0 && (
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label="Formatted" value={result.formatted.toLocaleString()} tone="good" />
-              <Stat label="Duplicates" value={result.duplicates.toLocaleString()} sub={dedupe ? "removed" : "kept"} />
-              <Stat label="No password" value={result.noPassword.toLocaleString()} sub={keepPasswordless ? "kept" : "skipped"} />
-              <Stat label="No email" value={result.noEmail.length.toLocaleString()} sub="skipped" tone={result.noEmail.length ? "warn" : undefined} />
-            </div>
-          )}
-
-          {result.noEmail.length > 0 && (
-            <details className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200 light:text-amber-800">
-              <summary className="cursor-pointer select-none">
-                {result.noEmail.length.toLocaleString()} line{result.noEmail.length === 1 ? "" : "s"} had no detectable email — click to review
-              </summary>
-              <pre className="scroll-slim mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-amber-200/80 light:text-amber-800/80">
-                {result.noEmail.slice(0, 200).join("\n")}
-                {result.noEmail.length > 200 ? `\n…and ${(result.noEmail.length - 200).toLocaleString()} more` : ""}
-              </pre>
-            </details>
+              {stats.noEmailCount > 0 && (
+                <details className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200 light:text-amber-800">
+                  <summary className="cursor-pointer select-none">
+                    {stats.noEmailCount.toLocaleString()} line{stats.noEmailCount === 1 ? "" : "s"} had no detectable email — click to review
+                  </summary>
+                  <pre className="scroll-slim mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-amber-200/80 light:text-amber-800/80">
+                    {stats.noEmail.join("\n")}
+                    {stats.noEmailCount > stats.noEmail.length
+                      ? `\n…and ${(stats.noEmailCount - stats.noEmail.length).toLocaleString()} more`
+                      : ""}
+                  </pre>
+                </details>
+              )}
+            </>
           )}
         </div>
       </div>
