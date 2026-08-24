@@ -13,6 +13,7 @@ import {
   fileSlug,
   fileStamp,
 } from "@/lib/exportUtils";
+import Spinner from "./Spinner";
 
 interface Result {
   domain: string;
@@ -1051,28 +1052,48 @@ export default function Sorter() {
             </div>
           )}
 
-          <button
-            onClick={runSort}
-            disabled={
-              busy || blocked || parsed.domains.length === 0 || exceedsQuota
-            }
-            className="mt-4 w-full rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-3 font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-400 hover:to-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy
-              ? progress
-                ? `Sorting… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`
-                : "Sorting…"
-              : exceedsQuota
-                ? `Too many — ${(parsed.domains.length - quota.remaining).toLocaleString()} over your limit`
-                : `Sort ${parsed.domains.length.toLocaleString()} domain${parsed.domains.length === 1 ? "" : "s"}`}
-          </button>
+          <div className="mt-4 flex gap-3">
+            <button
+              onClick={runSort}
+              disabled={
+                busy || blocked || parsed.domains.length === 0 || exceedsQuota
+              }
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-3 font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-400 hover:to-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy && <Spinner className="h-4 w-4" />}
+              {busy
+                ? progress
+                  ? `Sorting… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()} · ${Math.round((progress.done / progress.total) * 100)}%`
+                  : "Sorting…"
+                : exceedsQuota
+                  ? `Too many — ${(parsed.domains.length - quota.remaining).toLocaleString()} over your limit`
+                  : `Sort ${parsed.domains.length.toLocaleString()} domain${parsed.domains.length === 1 ? "" : "s"}`}
+            </button>
+            <button
+              onClick={clearCache}
+              disabled={
+                busy || (results.length === 0 && history.length === 0 && !text)
+              }
+              className="rounded-xl border border-fg/15 bg-fg/5 px-5 py-3 text-sm font-medium text-fg/70 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Clear your input, saved results and recent-sort history. Your 3-hour usage limit is NOT reset."
+            >
+              Clear
+            </button>
+          </div>
 
           {progress && (
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-fg/10">
-              <div
-                className="h-full rounded-full bg-brand-500 transition-all"
-                style={{ width: `${(progress.done / progress.total) * 100}%` }}
-              />
+            <div className="mt-3">
+              <div className="h-2 overflow-hidden rounded-full bg-fg/10">
+                <div
+                  className="h-full rounded-full bg-brand-500 transition-all"
+                  style={{ width: `${(progress.done / progress.total) * 100}%` }}
+                />
+              </div>
+              <div className="mt-1.5 text-right text-xs text-brand-400 light:text-brand-600">
+                {Math.round((progress.done / progress.total) * 100)}% ·{" "}
+                {progress.done.toLocaleString()} /{" "}
+                {progress.total.toLocaleString()}
+              </div>
             </div>
           )}
 
@@ -1235,10 +1256,11 @@ export default function Sorter() {
             </div>
           ) : dimension === "registrar" && regBusy && buckets.length === 0 ? (
             <div className="flex h-48 flex-col items-center justify-center text-center text-sm text-fg/40">
-              <div className="mb-2 text-2xl">🔎</div>
+              <Spinner className="mb-2 h-6 w-6 text-brand-400 light:text-brand-600" />
               Looking up registrars via RDAP…
               {regProgress && (
                 <span className="mt-1 text-xs text-fg/30">
+                  {Math.round((regProgress.done / regProgress.total) * 100)}% ·{" "}
                   {regProgress.done.toLocaleString()} /{" "}
                   {regProgress.total.toLocaleString()}
                 </span>
@@ -1247,8 +1269,11 @@ export default function Sorter() {
           ) : (
             <>
               {dimension === "registrar" && regBusy && regProgress && (
-                <div className="mb-3 text-xs text-fg/40">
-                  Loading registrars… {regProgress.done.toLocaleString()} /{" "}
+                <div className="mb-3 flex items-center gap-2 text-xs text-fg/40">
+                  <Spinner className="h-3.5 w-3.5" />
+                  Loading registrars…{" "}
+                  {Math.round((regProgress.done / regProgress.total) * 100)}% ·{" "}
+                  {regProgress.done.toLocaleString()} /{" "}
                   {regProgress.total.toLocaleString()}
                 </div>
               )}

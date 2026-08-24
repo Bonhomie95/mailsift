@@ -9,6 +9,7 @@ import {
   type FormatStats,
 } from "@/lib/credentials";
 import { readFileToText, downloadBlob, fileStamp } from "@/lib/exportUtils";
+import Spinner from "./Spinner";
 
 interface ConvertResult {
   preview: string;
@@ -295,11 +296,6 @@ export default function CredentialSorter() {
                 e.target.value = "";
               }}
             />
-            {(text || file) && (
-              <button onClick={clearAll} className="text-xs text-fg/40 hover:text-fg/70">
-                Clear
-              </button>
-            )}
             <span className="ml-auto text-xs text-fg/40">CSV · TXT · XLSX</span>
           </div>
 
@@ -354,13 +350,23 @@ export default function CredentialSorter() {
             <Toggle checked={keepPasswordless} onChange={setKeepPasswordless} label="Keep rows with no password" />
           </div>
 
-          <button
-            onClick={convert}
-            disabled={busy || !hasInput}
-            className="mt-4 w-full rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-3 font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-400 hover:to-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {convertLabel}
-          </button>
+          <div className="mt-4 flex gap-3">
+            <button
+              onClick={convert}
+              disabled={busy || !hasInput}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-indigo-500 px-4 py-3 font-semibold text-white shadow-lg shadow-brand-500/20 transition hover:from-brand-400 hover:to-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {busy && <Spinner className="h-4 w-4" />}
+              {convertLabel}
+            </button>
+            <button
+              onClick={clearAll}
+              disabled={busy || (!text && !file && !result)}
+              className="rounded-xl border border-fg/15 bg-fg/5 px-5 py-3 text-sm font-medium text-fg/70 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear
+            </button>
+          </div>
           {stale && !busy && (
             <p className="mt-2 text-center text-xs text-amber-300 light:text-amber-700">
               Options changed — click to re-convert.
