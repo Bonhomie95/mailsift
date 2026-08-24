@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Sorter from "./Sorter";
 import CountrySorter from "./CountrySorter";
+import CredentialSorter from "./CredentialSorter";
 
-type Tab = "mail" | "country";
+type Tab = "mail" | "country" | "login";
 
 const TABS: { id: Tab; label: string; icon: string; blurb: string }[] = [
   { id: "mail", label: "Mail Sorter", icon: "📬", blurb: "Sort by mail provider & registrar" },
   { id: "country", label: "Country Sorter", icon: "🌍", blurb: "Sort by country, timezone & best send time" },
+  { id: "login", label: "Login Sorter", icon: "🔐", blurb: "Reformat email + password lists to email:password" },
 ];
 
 export default function SorterTabs() {
@@ -43,7 +45,7 @@ export default function SorterTabs() {
         <p className="text-xs text-fg/40">{active.blurb}</p>
       </div>
 
-      {tab === "mail" ? <Sorter /> : <CountrySorter />}
+      {tab === "mail" ? <Sorter /> : tab === "country" ? <CountrySorter /> : <CredentialSorter />}
     </div>
   );
 }
