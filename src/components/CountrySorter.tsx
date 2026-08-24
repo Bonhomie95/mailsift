@@ -421,6 +421,7 @@ export default function CountrySorter() {
     setActiveBucket(null);
     setRestoredNote(null);
     setError(null);
+    setSortSummary(null);
   }
 
   const shown = activeBucket ? buckets.find((b) => b.id === activeBucket) : null;
@@ -512,17 +513,6 @@ export default function CountrySorter() {
               </button>
             )}
             {fileName && <span className="text-xs text-fg/40">Loaded: {fileName}</span>}
-            {text && (
-              <button
-                onClick={() => {
-                  setText("");
-                  setFileName(null);
-                }}
-                className="text-xs text-fg/40 hover:text-fg/70"
-              >
-                Clear
-              </button>
-            )}
             <span className="ml-auto text-xs text-fg/40">CSV · TXT · XLSX</span>
           </div>
 

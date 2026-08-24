@@ -751,6 +751,7 @@ export default function Sorter() {
     setActiveBucket(null);
     setRestoredNote(null);
     setError(null);
+    setSortSummary(null);
   }
 
   function downloadText(filename: string, content: string) {
@@ -1011,17 +1012,6 @@ export default function Sorter() {
             )}
             {fileName && (
               <span className="text-xs text-fg/40">Loaded: {fileName}</span>
-            )}
-            {text && (
-              <button
-                onClick={() => {
-                  setText("");
-                  setFileName(null);
-                }}
-                className="text-xs text-fg/40 hover:text-fg/70"
-              >
-                Clear
-              </button>
             )}
             <span className="ml-auto text-xs text-fg/40">
               CSV · TXT · XLSX · commas, semicolons, spaces, new lines
